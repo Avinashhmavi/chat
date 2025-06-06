@@ -25,34 +25,31 @@ chatbot = ChatbotEngine(db1, db2, db3)
 @app.route('/register', methods=['POST'])
 def register():
     try:
-        # Check if the request is JSON
         if not request.is_json:
             logger.error('Request is not JSON')
-            return jsonify({'success': False, 'message': 'Request must be JSON.'}), 400
+            return jsonify({'success': False, 'message': 'Request must be JSON'}), 400
         
-        # Get the JSON data
         data = request.get_json(force=True)
         logger.debug('Received data: %s', data)
 
-        # Extract and validate fields
         name = data.get('name', '').strip()
-        mobile = data.get('mobile', '').strip()  # Changed 'phone' to 'mobile'
+        mobile = data.get('mobile', '').strip()
         logger.debug('Parsed name: %s', name)
-        logger.debug('Parsed mobile: %s', mobile)  # Changed 'phone' to 'mobile'
+        logger.debug('Parsed mobile: %s', mobile)
 
-        if not name or not mobile or not mobile.isdigit() or len(mobile) != 10:  # Changed 'phone' to 'mobile'
-            logger.error('Validation failed: name=%s, mobile=%s', name, mobile)  # Changed 'phone' to 'mobile'
-            return jsonify({'success': False, 'message': 'Valid name and 10-digit mobile are required.'}), 400  # Updated message
+        if not name or not mobile or not mobile.isdigit() or len(mobile) != 10:
+            logger.error('Validation failed: name=%s, mobile=%s', name, mobile)
+            return jsonify({'success': False, 'message': 'Valid name and 10-digit mobile are required'}), 400
 
-        user_id, otp = chatbot.register_user(name, mobile, 'Unknown')  # Changed 'phone' to 'mobile'
+        user_id, otp = chatbot.register_user(name, mobile, 'Unknown')
         logger.info('Registration successful for user_id: %s', user_id)
-        return jsonify({'success': True, 'message': 'Registration successful. OTP sent.', 'otp': otp, 'user_id': user_id})
+        return jsonify({'success': True, 'message': 'Registration successful. OTP sent', 'otp': otp, 'user_id': user_id})
     
     except Exception as e:
         logger.error('Error processing request: %s', str(e))
-        return jsonify({'success': False, 'message': 'Invalid request format.'}), 400
+        return jsonify({'success': False, 'message': 'Invalid request format'}), 400
 
-@app.route('/verify_otp', methods=['POST'])
+@app.route('/verify-otp', methods=['POST'])
 def verify_otp():
     try:
         data = request.get_json(force=True)
@@ -61,15 +58,15 @@ def verify_otp():
         otp = data.get('otp')
         if not user_id or not otp:
             logger.error('User ID or OTP missing: user_id=%s, otp=%s', user_id, otp)
-            return jsonify({'success': False, 'message': 'User ID and OTP are required.'}), 400
+            return jsonify({'success': False, 'message': 'User ID and OTP are required'}), 400
         if chatbot.verify_otp(user_id, otp):
             logger.info('OTP verified for user_id: %s', user_id)
-            return jsonify({'success': True, 'message': 'OTP verified successfully.', 'user_id': user_id})
+            return jsonify({'success': True, 'message': 'OTP verified successfully', 'user_id': user_id})
         logger.warning('Invalid OTP for user_id: %s', user_id)
-        return jsonify({'success': False, 'message': 'Invalid OTP.'})
+        return jsonify({'success': False, 'message': 'Invalid OTP'})
     except Exception as e:
         logger.error('Error verifying OTP: %s', str(e))
-        return jsonify({'success': False, 'message': 'Invalid request format.'}), 400
+        return jsonify({'success': False, 'message': 'Invalid request format'}), 400
 
 @app.route('/chat', methods=['POST'])
 def chat():
@@ -138,7 +135,7 @@ def chat():
             })
 
         elif state == 'category_selected':
-            if not user_input:  # Handle empty input (initial transition to this state)
+            if not user_input:
                 categories = db3.get_categories()
                 category_options = [category[1] for category in categories]
                 return jsonify({
@@ -157,7 +154,7 @@ def chat():
                     'next_state': 'start'
                 })
             category_id = category_dict.get(selected_category)
-            if not category_id:  # Handle invalid category selection
+            if not category_id:
                 category_options = [category[1] for category in categories]
                 return jsonify({
                     'response': 'Invalid category. How can I assist you further?',
@@ -213,7 +210,7 @@ def chat():
             'response': 'Sorry, something went wrong. Let’s get back on track. How can I assist you further?',
             'options': category_options,
             'next_state': 'category_selected'
-        }), 200  # Return 200 to ensure the frontend processes it as a success
+        }), 200
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000, debug=True)
