@@ -189,10 +189,14 @@ def chat():
             context = chatbot.get_context(user_id)
             answer = db3.get_answer(question_id, context, db1, db2)
             db3.log_query(user_id, context['course'], context['subcourse'], context['training_type'], context['category_id'], question_id, answer)
+            
+            questions = db3.get_questions(context['category_id'])
+            question_options = [question[1] for question in questions]
+            
             return jsonify({
                 'response': answer,
-                'options': [],
-                'next_state': 'category_selected'
+                'options': question_options,
+                'next_state': 'question_selected'
             })
 
         return jsonify({

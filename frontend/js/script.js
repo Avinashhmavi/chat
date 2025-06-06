@@ -1,6 +1,63 @@
+// Global variables and functions
+let userId = null;
+let currentState = 'start';
+let isRegistered = false;
+let recognition = null;
+let selectedFile = null;
+
+function fetchChatResponse(state, input) {
+    console.log('Fetching chat response for state:', state, 'with input:', input); // Debug log
+    fetch('http://localhost:5000/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ state, input, user_id: userId })
+    })
+    .then(response => {
+        if (!response.ok) throw new Error('Network response was not ok');
+        return response.json();
+    })
+    .then(data => {
+        console.log('Server response:', data); // Debug log
+        addMessage(data.response, 'bot');
+        currentState = data.next_state;
+
+        if (data.options && data.options.length > 0) {
+            displayOptions(data.options, data.next_state);
+        } else if (data.next_state === 'question') {
+            addMessage('Type your question below:', 'bot');
+        } else if (data.options.length === 0 && data.next_state !== state) {
+            fetchChatResponse(data.next_state, '');
+        }
+
+        scrollToBottom();
+    })
+    .catch(error => {
+        console.error('Chat error:', error);
+        addMessage('Sorry, something went wrong. Let’s get back on track.', 'bot');
+        currentState = 'category_selected';
+        fetchChatResponse('category_selected', '');
+        scrollToBottom();
+    });
+}
+
+function addMessage(text, sender) {
+    if (!text && sender === 'bot') return;
+    const messageDiv = document.createElement('div');
+    messageDiv.classList.add('message', `${sender}-message`);
+    messageDiv.textContent = text;
+    document.getElementById('messagesContainer').appendChild(messageDiv);
+    scrollToBottom();
+}
+
+function scrollToBottom() {
+    const messagesContainer = document.getElementById('messagesContainer');
+    messagesContainer.scrollTop = messagesContainer.scrollHeight;
+}
+
+// Single DOMContentLoaded listener
 document.addEventListener('DOMContentLoaded', function() {
+    // DOM elements
     const chatbotBtn = document.getElementById('chatbotBtn');
-    const chatbotBtnContainer = document.getElementById('chatbotBtnContainer');
     const chatbotLabel = document.getElementById('chatbotLabel');
     const chatbotPopup = document.getElementById('chatbotPopup');
     const closeChat = document.getElementById('closeChat');
@@ -15,12 +72,11 @@ document.addEventListener('DOMContentLoaded', function() {
     const voiceBtn = document.getElementById('voiceBtn');
     const attachBtn = document.getElementById('attachBtn');
     const fileInput = document.getElementById('fileInput');
+    const refreshButton = document.getElementById('refreshChat');
 
-    let isRegistered = false;
-    let recognition = null;
-    let selectedFile = null;
-    let userId = null;
-    let currentState = 'start';
+    // Check if critical elements exist
+    if (!refreshButton) console.error('Refresh button not found in DOM');
+    if (!messagesContainer) console.error('Messages container not found in DOM');
 
     function initVoiceRecognition() {
         try {
@@ -30,20 +86,17 @@ document.addEventListener('DOMContentLoaded', function() {
                 recognition.continuous = false;
                 recognition.interimResults = false;
                 
-                recognition.onresult = function(event) {
-                    const transcript = event.results[0][0].transcript;
-                    userInput.value = transcript;
+                recognition.onresult = event => {
+                    userInput.value = event.results[0][0].transcript;
                     voiceBtn.classList.remove('listening');
                 };
                 
-                recognition.onerror = function(event) {
+                recognition.onerror = event => {
                     console.error('Speech recognition error', event.error);
                     voiceBtn.classList.remove('listening');
                 };
                 
-                recognition.onend = function() {
-                    voiceBtn.classList.remove('listening');
-                };
+                recognition.onend = () => voiceBtn.classList.remove('listening');
                 
                 voiceBtn.style.display = 'flex';
                 return true;
@@ -51,21 +104,31 @@ document.addEventListener('DOMContentLoaded', function() {
         } catch (e) {
             console.error("Speech recognition init error:", e);
         }
-        
         voiceBtn.style.display = 'none';
         return false;
     }
 
     const voiceSupported = initVoiceRecognition();
 
+    // Refresh button handler
+    refreshButton.addEventListener('click', function() {
+        console.log('Refresh button clicked'); // Debug log
+        messagesContainer.innerHTML = '';
+        const welcomeMessage = document.querySelector('.welcome-message');
+        if (welcomeMessage) welcomeMessage.classList.remove('d-none');
+        this.classList.add('refreshing');
+        setTimeout(() => this.classList.remove('refreshing'), 500);
+        currentState = 'start';
+        addMessage("Chat refreshed. Let's start over.", 'bot');
+        fetchChatResponse('start', '');
+    });
+
     chatbotBtn.addEventListener('click', function() {
         chatbotPopup.classList.toggle('active');
         chatbotLabel.style.opacity = '0';
         chatbotLabel.style.visibility = 'hidden';
         this.classList.add('animate-bounce');
-        setTimeout(() => {
-            this.classList.remove('animate-bounce');
-        }, 300);
+        setTimeout(() => this.classList.remove('animate-bounce'), 300);
     });
 
     closeChat.addEventListener('click', function() {
@@ -74,38 +137,23 @@ document.addEventListener('DOMContentLoaded', function() {
             chatbotLabel.style.opacity = '1';
             chatbotLabel.style.visibility = 'visible';
         }, 300);
-        if (recognition && voiceBtn.classList.contains('listening')) {
-            recognition.stop();
-        }
+        if (recognition && voiceBtn.classList.contains('listening')) recognition.stop();
     });
 
     startChatBtn.addEventListener('click', function() {
         const name = userName.value.trim();
-        const mobile = userMobile.value.trim();  // Changed variable name to 'mobile' for clarity
-
-        // Log the captured values to verify them
-        console.log('Captured name:', name);
-        console.log('Captured mobile:', mobile);  // Updated log message
-
-        // Validate the inputs
+        const mobile = userMobile.value.trim();
         if (name && mobile && mobile.length === 10 && /^\d+$/.test(mobile)) {
-            const payload = { name, mobile };  // Changed 'phone' to 'mobile'
-            
-            // Log the payload to confirm what’s being sent
-            console.log('Sending payload:', JSON.stringify(payload));
-
             fetch('http://localhost:5000/register', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(payload)
+                body: JSON.stringify({ name, mobile })
             })
             .then(response => {
-                console.log('Response status:', response.status);
                 if (!response.ok) throw new Error('Network response was not ok');
                 return response.json();
             })
             .then(data => {
-                console.log('Registration response:', data);
                 if (data.success) {
                     userId = data.user_id;
                     alert(data.message + ' (OTP: ' + data.otp + ')');
@@ -128,9 +176,9 @@ document.addEventListener('DOMContentLoaded', function() {
             alert('Please enter a valid name and 10-digit mobile number.');
         }
     });
+
     function verifyOtp(userId) {
         const otp = document.getElementById('otpInput').value.trim();
-        console.log('Verifying OTP for userId:', userId, 'with OTP:', otp);
         if (otp) {
             fetch('http://localhost:5000/verify_otp', {
                 method: 'POST',
@@ -142,7 +190,6 @@ document.addEventListener('DOMContentLoaded', function() {
                 return response.json();
             })
             .then(data => {
-                console.log('OTP verification response:', data);
                 if (data.success) {
                     isRegistered = true;
                     registrationForm.classList.add('d-none');
@@ -160,52 +207,19 @@ document.addEventListener('DOMContentLoaded', function() {
             alert('Please enter the OTP.');
         }
     }
+
     function startChatbot() {
         addMessage("Hello! I'm your T.I.M.E. assistant. Let's get started.", 'bot');
         fetchChatResponse('start', '');
     }
 
-    function fetchChatResponse(state, input) {
-        fetch('http://localhost:5000/chat', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ state, input, user_id: userId })
-        })
-        .then(response => {
-            if (!response.ok) throw new Error('Network response was not ok');
-            return response.json();
-        })
-        .then(data => {
-            addMessage(data.response, 'bot');
-            currentState = data.next_state;
-
-            if (data.options.length > 0) {
-                displayOptions(data.options, data.next_state);
-            } else if (data.next_state === 'question') {
-                addMessage('Type your question below:', 'bot');
-            } else if (data.options.length === 0 && data.next_state !== state) {
-                fetchChatResponse(data.next_state, '');
-            }
-
-            scrollToBottom();
-        })
-        .catch(error => {
-            console.error('Chat error:', error);
-            addMessage('Sorry, something went wrong. Let’s get back on track.', 'bot');
-            // Recover by resetting to category_selected state
-            currentState = 'category_selected';
-            fetchChatResponse('category_selected', '');
-            scrollToBottom();
-        });
-    }
-
     function displayOptions(options, nextState) {
         const optionsDiv = document.createElement('div');
-        optionsDiv.classList.add('prompts-inline');  // Add both classes to the container
+        optionsDiv.classList.add('prompts-inline');
         options.forEach(option => {
             const button = document.createElement('button');
             button.textContent = option;
-            button.classList.add('option-btn');  // Only 'option-btn' for the buttons
+            button.classList.add('option-btn');
             button.addEventListener('click', () => {
                 addMessage(option, 'user');
                 fetchChatResponse(nextState, option);
@@ -259,30 +273,19 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     sendBtn.addEventListener('click', sendMessage);
-
-    userInput.addEventListener('keypress', function(e) {
-        if (e.key === 'Enter') {
-            sendMessage();
-        }
-    });
+    userInput.addEventListener('keypress', e => e.key === 'Enter' && sendMessage());
 
     voiceBtn.addEventListener('click', function() {
-        if (!isRegistered) {
-            alert('Please register first');
-            return;
-        }
+        if (!isRegistered) return alert('Please register first');
         if (recognition) {
             if (voiceBtn.classList.contains('listening')) {
                 recognition.stop();
-                voiceBtn.classList.remove('listening');
             } else {
                 try {
                     recognition.start();
                     voiceBtn.classList.add('listening');
                     userInput.placeholder = "Listening...";
-                    setTimeout(() => {
-                        userInput.placeholder = "Type your question...";
-                    }, 3000);
+                    setTimeout(() => userInput.placeholder = "Type your question...", 3000);
                 } catch (e) {
                     console.error('Voice recognition error:', e);
                     voiceBtn.classList.remove('listening');
@@ -294,88 +297,40 @@ document.addEventListener('DOMContentLoaded', function() {
     });
 
     attachBtn.addEventListener('click', function() {
-        if (!isRegistered) {
-            alert('Please register first');
-            return;
-        }
+        if (!isRegistered) return alert('Please register first');
         fileInput.click();
     });
 
-    fileInput.addEventListener('change', function() {
-        if (this.files && this.files[0]) {
-            selectedFile = this.files[0];
-            userInput.placeholder = `File attached: ${selectedFile.name}`;
-            setTimeout(() => {
-                userInput.placeholder = "Type your question...";
-            }, 3000);
-        }
-    });
-
-    function addMessage(text, sender) {
-        if (!text && sender === 'bot') return;
-        const messageDiv = document.createElement('div');
-        messageDiv.classList.add('message', `${sender}-message`);
-        messageDiv.textContent = text;
-        messagesContainer.appendChild(messageDiv);
+    if (fileInput) {
+        fileInput.addEventListener('change', function() {
+            if (this.files && this.files[0]) {
+                selectedFile = this.files[0];
+                userInput.placeholder = `File attached: ${selectedFile.name}`;
+                setTimeout(() => userInput.placeholder = "Type your question...", 3000);
+            }
+        });
+    } else {
+        console.error('Element with ID "fileInput" not found in the DOM.');
     }
 
-    function scrollToBottom() {
-        messagesContainer.scrollTop = messagesContainer.scrollHeight;
+    // Wave animation for chatbot button
+    let animationCount = 0;
+    const maxAnimations = 3;
+    function triggerWaveAnimation() {
+        if (animationCount >= maxAnimations) return;
+        chatbotBtn.classList.add('wave-effect');
+        animationCount++;
+        setTimeout(() => {
+            chatbotBtn.classList.remove('wave-effect');
+            setTimeout(triggerWaveAnimation, 300);
+        }, 1500);
     }
+    triggerWaveAnimation();
 
     setTimeout(() => {
         chatbotBtn.classList.add('animate-bounce');
-        setTimeout(() => {
-            chatbotBtn.classList.remove('animate-bounce');
-        }, 1000);
+        setTimeout(() => chatbotBtn.classList.remove('animate-bounce'), 1000);
     }, 1500);
 
     console.log('Voice recognition supported:', voiceSupported);
 });
-
-document.addEventListener('DOMContentLoaded', function() {
-    const chatBtn = document.querySelector('.chatbot-btn');
-    let animationCount = 0;
-    const maxAnimations = 3;
-    
-    function triggerWaveAnimation() {
-        if (animationCount >= maxAnimations) return;
-        chatBtn.classList.add('wave-effect');
-        animationCount++;
-        setTimeout(() => {
-            chatBtn.classList.remove('wave-effect');
-            setTimeout(triggerWaveAnimation, 300);
-        }, 1500);
-    }
-    
-    triggerWaveAnimation();
-});
-
-document.getElementById('refreshChat').addEventListener('click', function() {
-    const messagesContainer = document.getElementById('messagesContainer');
-    messagesContainer.innerHTML = '';
-    const welcomeMessage = document.querySelector('.welcome-message');
-    if (welcomeMessage) {
-        welcomeMessage.classList.remove('d-none');
-    }
-    this.classList.add('refreshing');
-    setTimeout(() => {
-        this.classList.remove('refreshing');
-    }, 500);
-    currentState = 'start';
-    addMessage("Chat refreshed. Let's start over.", 'bot');
-    fetchChatResponse('start', '');
-});
-
-function addMessage(text, sender) {
-    const messageDiv = document.createElement('div');
-    messageDiv.classList.add('message', `${sender}-message`);
-    messageDiv.textContent = text;
-    document.getElementById('messagesContainer').appendChild(messageDiv);
-    scrollToBottom();
-}
-
-function scrollToBottom() {
-    const messagesContainer = document.getElementById('messagesContainer');
-    messagesContainer.scrollTop = messagesContainer.scrollHeight;
-}
