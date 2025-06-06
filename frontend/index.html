@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>T.I.M.E. Chatbot</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet"> <!-- If using Bootstrap -->
+    <link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+    <!-- Regular website content -->
+    <div class="container">
+        <h1>Welcome to T.I.M.E.</h1>
+        <p>This is where the regular website content would appear.</p>
+    </div>
+
+    <!-- Chatbot Button -->
+    <div class="chatbot-btn-container" id="chatbotBtnContainer">
+        <span class="chatbot-label" id="chatbotLabel">Ask Anything</span>
+        <div class="chatbot-btn" id="chatbotBtn">
+            <!-- <img src="images/bot.png" alt="Chatbot Icon"> -->
+            <i class="fas fa-robot"></i>
+        </div>
+    </div>
+
+    <!-- Chatbot Popup -->
+    <div class="chatbot-popup" id="chatbotPopup">
+        <div class="chatbot-header">
+            <h5>T.I.M.E. Instant Neural Assistant</h5>
+            <div class="header-actions">
+                <button class="btn-refresh" id="refreshChat" title="Refresh Chat">
+                    <i class="fas fa-sync-alt"></i>
+                </button>
+                <button class="btn-close" id="closeChat"></button>
+            </div>
+        </div>
+
+        <!-- Registration Form -->
+        <div class="registration-form" id="registrationForm">
+            <div class="welcome-message">
+                Register to chat with TINA
+                <div class="mb-3">
+                  <input type="text" class="form-control" id="userName" placeholder="Enter your name">
+                </div>
+                <div class="mb-3">
+                  <input type="text" class="form-control" id="userMobile" placeholder="Enter mobile number">
+                </div>
+                <button class="btn btn-primary" id="startChatBtn">Start Chat</button>
+              </div>
+        </div>
+        
+        <!-- Chatbot Body -->
+        <div class="chatbot-body d-none" id="chatbotBody">
+            <div class="messages-container" id="messagesContainer">
+
+            </div>
+        </div>
+
+        <!-- Chatbot Footer -->
+        <div class="chatbot-footer">
+            <div class="input-group">
+                <input type="text" class="form-control" id="userInput" placeholder="Type your question...">
+                <button class="btn btn-outline-secondary voice-btn" id="voiceBtn" style="display: none;">
+                    <i class="fas fa-microphone"></i>
+                </button>
+                <button class="btn btn-outline-secondary" id="attachBtn">
+                    <i class="fas fa-paperclip"></i>
+                </button>
+                <button class="btn btn-primary" id="sendBtn">Send</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="js/script.js"></script>
+    <!-- Include Font Awesome for icons (if used) -->
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" integrity="sha512-DTOQO9RWCH3ppGqcWaEA1BIZOC6xxalwEsw9c2QQeAIftl+Vegovlnee1c9QX4TctnWMn13TZye+giMm8e2LwA==" crossorigin="anonymous" referrerpolicy="no-referrer" />
+</body>
+</html>
