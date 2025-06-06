@@ -2,6 +2,8 @@
 let userId = null;
 let currentState = 'start';
 let isRegistered = false;
+let allOptions = []; // Store all options for filtering
+let optionsDiv = null; // Reference to the options container
 
 // Function to add messages to the chat
 function addMessage(text, sender) {
@@ -21,12 +23,28 @@ function addMessage(text, sender) {
 // Function to display options
 function displayOptions(options, nextState) {
     const messagesContainer = document.getElementById('messagesContainer');
+    const userInput = document.getElementById('userInput');
     if (!messagesContainer) {
         console.error('Messages container not found');
         return;
     }
-    const optionsDiv = document.createElement('div');
+    if (!userInput) {
+        console.error('User input not found');
+        return;
+    }
+    allOptions = options; // Store all options for filtering
+    optionsDiv = document.createElement('div');
     optionsDiv.classList.add('prompts-inline');
+    renderOptions(options, nextState);
+    messagesContainer.appendChild(optionsDiv);
+    messagesContainer.scrollTop = messagesContainer.scrollHeight;
+    userInput.value = ''; // Clear input on new options
+}
+
+// Function to render filtered options
+function renderOptions(options, nextState) {
+    if (!optionsDiv) return;
+    optionsDiv.innerHTML = '';
     options.forEach(option => {
         const button = document.createElement('button');
         button.textContent = option;
@@ -35,11 +53,21 @@ function displayOptions(options, nextState) {
             addMessage(option, 'user');
             fetchChatResponse(nextState, option);
             optionsDiv.remove();
+            optionsDiv = null;
+            allOptions = [];
+            document.getElementById('userInput').value = ''; // Clear input
         });
         optionsDiv.appendChild(button);
     });
-    messagesContainer.appendChild(optionsDiv);
-    messagesContainer.scrollTop = messagesContainer.scrollHeight;
+}
+
+// Function to filter options based on input
+function filterOptions(input) {
+    if (!allOptions.length || !optionsDiv) return;
+    const filteredOptions = allOptions.filter(option => 
+        option.toLowerCase().includes(input.toLowerCase())
+    );
+    renderOptions(filteredOptions.length > 0 ? filteredOptions : allOptions, currentState);
 }
 
 // Function to fetch chat responses from the server
@@ -100,7 +128,7 @@ function handleRegistration() {
     .then(data => {
         if (data.success) {
             userId = data.user_id;
-            alert(`Registration successful! OTP: ${data.otp}`); // Restore OTP alert
+            alert(`Registration successful! OTP: ${data.otp}`);
             const registrationForm = document.getElementById('registrationForm');
             if (registrationForm) {
                 registrationForm.innerHTML = `
@@ -170,10 +198,19 @@ function verifyOTP() {
 function refreshChat() {
     console.log('Refreshing chat...');
     const messagesContainer = document.getElementById('messagesContainer');
+    const userInput = document.getElementById('userInput');
     if (messagesContainer) {
         messagesContainer.innerHTML = '';
     } else {
         console.error('Messages container not found during refresh');
+    }
+    if (userInput) {
+        userInput.value = ''; // Clear input
+    }
+    if (optionsDiv) {
+        optionsDiv.remove();
+        optionsDiv = null;
+        allOptions = [];
     }
     currentState = 'start';
     fetchChatResponse('start', '');
@@ -221,5 +258,15 @@ document.addEventListener('DOMContentLoaded', function() {
         console.log('Start chat button event listener attached');
     } else {
         console.error('Start chat button not found in DOM');
+    }
+
+    const userInput = document.getElementById('userInput');
+    if (userInput) {
+        userInput.addEventListener('input', () => {
+            filterOptions(userInput.value);
+        });
+        console.log('User input event listener attached');
+    } else {
+        console.error('User input not found in DOM');
     }
 });

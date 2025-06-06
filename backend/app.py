@@ -78,15 +78,31 @@ def chat():
         user_id = data.get('user_id')
 
         if state == 'start':
+            # Fetch cities from MySQL database
+            db1.cursor.execute("SELECT city FROM locations")
+            cities = db1.cursor.fetchall()
+            logger.debug('Fetched cities: %s', cities)
+            city_options = [city[0] for city in cities]
+            if not city_options:
+                logger.error('No cities found in locations table')
+                return jsonify({
+                    'response': 'No cities available. Please contact support.',
+                    'options': [],
+                    'next_state': 'start'
+                }), 200
             return jsonify({
                 'response': f"Hi, <user>! I'm TIME Instant Neural Assistant (TINA) here to assist you today.\n\nWhat city are you from?",
-                'options': ['Hyderabad', 'Mumbai', 'Delhi', 'Bangalore', 'Chennai'],
+                'options': city_options,
                 'next_state': 'city_selected'
             })
 
         elif state == 'city_selected':
             selected_city = user_input
-            valid_cities = ['Hyderabad', 'Mumbai', 'Delhi', 'Bangalore', 'Chennai']
+            # Validate against database cities
+            db1.cursor.execute("SELECT city FROM locations")
+            cities = db1.cursor.fetchall()
+            valid_cities = [city[0] for city in cities]
+            logger.debug('Valid cities: %s', valid_cities)
             if selected_city not in valid_cities:
                 return jsonify({
                     'response': 'Invalid city. Please select a valid city.',
