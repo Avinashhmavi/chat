@@ -47,7 +47,7 @@ def register():
     
     except Exception as e:
         logger.error('Error processing request: %s', str(e))
-        return jsonify({'success': False, 'message': 'Invalid request format'}), 400
+        return jsonify({'success': False, 'error': str(e)}), 400
 
 @app.route('/verify-otp', methods=['POST'])
 def verify_otp():
@@ -60,13 +60,13 @@ def verify_otp():
             logger.error('User ID or OTP missing: user_id=%s, otp=%s', user_id, otp)
             return jsonify({'success': False, 'message': 'User ID and OTP are required'}), 400
         if chatbot.verify_otp(user_id, otp):
-            logger.info('OTP verified for user_id: %s', user_id)
+            logger.info('OTP verification completed successfully for user_id: %s', user_id)
             return jsonify({'success': True, 'message': 'OTP verified successfully', 'user_id': user_id})
         logger.warning('Invalid OTP for user_id: %s', user_id)
         return jsonify({'success': False, 'message': 'Invalid OTP'})
     except Exception as e:
         logger.error('Error verifying OTP: %s', str(e))
-        return jsonify({'success': False, 'message': 'Invalid request format'}), 400
+        return jsonify({'success': False, 'error': str(e)}), 400
 
 @app.route('/chat', methods=['POST'])
 def chat():
@@ -81,7 +81,7 @@ def chat():
             # Fetch cities from MySQL database
             db1.cursor.execute("SELECT city FROM locations")
             cities = db1.cursor.fetchall()
-            logger.debug('Fetched cities: %s', cities)
+            logger.debug('Cities fetched: %s', cities)
             city_options = [city[0] for city in cities]
             if not city_options:
                 logger.error('No cities found in locations table')
@@ -110,10 +110,46 @@ def chat():
                     'next_state': 'city_selected'
                 })
             chatbot.set_context(user_id, {'city': selected_city})
-            courses = ['CAT', 'GMAT', 'Bank Exams', 'SSC CGLE', 'GRE', 'MAT', 'ICET', 'MHCET', 'CMAT', 'IPMAT', 'CLAT', 'CUET', 'OTHERS']
+            
+            # Fetch courses for the selected city
+            db1.cursor.execute("SELECT school_courses, college_courses FROM locations WHERE city = %s", (selected_city,))
+            result = db1.cursor.fetchone()
+            logger.debug('Fetched courses for %s: %s', selected_city, result)
+            if not result:
+                logger.error('No courses found for city: %s', selected_city)
+                return jsonify({
+                    'response': f'No courses available for {selected_city}. Please select another city.',
+                    'options': valid_cities,
+                    'next_state': 'city_selected'
+                }), 200
+            
+            school_courses = result[0].split(',') if result[0] else []
+            college_courses = result[1].split(',') if result[1] else []
+            all_courses = list(set(school_courses + college_courses))  # Combine and remove duplicates
+            logger.debug('Combined courses: %s', all_courses)
+            
+            # Validate courses against courses table
+            valid_courses = []
+            for course in all_courses:
+                course = course.strip()
+                if not course:
+                    continue
+                db1.cursor.execute("SELECT course_status FROM courses WHERE title = %s OR coursename = %s", (course, course))
+                course_status = db1.cursor.fetchone()
+                if course_status and course_status[0] == 1:
+                    valid_courses.append(course)
+            
+            logger.debug('Valid courses after status check: %s', valid_courses)
+            if not valid_courses:
+                return jsonify({
+                    'response': f'No active courses available for {selected_city}. Please select another city.',
+                    'options': valid_cities,
+                    'next_state': 'city_selected'
+                }), 200
+
             return jsonify({
-                'response': f'You selected {selected_city}. Which Course are you looking for?',
-                'options': courses,
+                'response': f'You selected {selected_city}. Which course are you looking for?',
+                'options': valid_courses,
                 'next_state': 'course_selected'
             })
 
@@ -199,6 +235,14 @@ def chat():
                     'next_state': 'category_selected'
                 })
             question_id = question_dict.get(selected_question)
+            if not question_id:
+                questions = db3.get_questions(chatbot.get_context(user_id)['category_id'])
+                question_options = [question[1] for question in questions]
+                return jsonify({
+                    'response': 'Invalid question. Please select a valid question.',
+                    'options': question_options,
+                    'next_state': 'question_selected'
+                })
             context = chatbot.get_context(user_id)
             answer = db3.get_answer(question_id, context, db1, db2)
             db3.log_query(user_id, context['course'], context['subcourse'], context['training_type'], context['category_id'], question_id, answer)
