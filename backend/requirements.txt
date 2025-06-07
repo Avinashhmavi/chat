@@ -1,11 +1,7 @@
-pymysql
 pyodbc
 python-dotenv
-requests
-beautifulsoup4
-streamlit
-flask
-flask-cors
-cryptography
 fastapi
 uvicorn
+aiomysql
+httpx
+cryptography

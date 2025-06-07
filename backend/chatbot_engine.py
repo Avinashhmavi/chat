@@ -6,12 +6,12 @@ class ChatbotEngine:
         self.db3 = db3
         self.contexts = {}
 
-    def register_user(self, name, mobile, city, demo_otp="5762"):  # Changed 'phone' to 'mobile'
-        user_id = self.db3.insert_user(name, mobile, city, demo_otp)  # Changed 'phone' to 'mobile'
+    async def register_user(self, name, mobile, city, demo_otp="5762"):
+        user_id = await self.db3.insert_user(name, mobile, city, demo_otp)
         return user_id, demo_otp
 
-    def verify_otp(self, user_id, otp):
-        return self.db3.verify_otp(user_id, otp)
+    async def verify_otp(self, user_id, otp):
+        return await self.db3.verify_otp(user_id, otp)
 
     def set_context(self, user_id, new_context):
         if user_id not in self.contexts:
