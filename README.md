@@ -10,12 +10,12 @@ This README provides detailed steps to set up and run the project locally for te
 
 The repository contains the following key directories and files:
 
-- **backend/**: Contains the Flask backend code.
-  - `app.py`: Main Flask application file.
+- **backend/**: Contains the backend code.
+  - `app.py`: Main application file.
   - `chatbot_engine.py`: Core chatbot logic for managing user context and interactions.
   - `db_connect.py`: Database connection classes (`MySQLDB`, `MSSQLDB`, `DB3`).
   - `config.py`: Configuration file for database credentials.
-  - `creating_db_schema.sql`: SQL script to set up the database schema (if needed).
+  - `creating_db_schema.sql`: SQL script to set up the database schema.
   - `requirements.txt`: Python dependencies for the backend.
 - **frontend/**: Contains the frontend code.
   - `index.html`: Main HTML file for the chatbot interface.
@@ -34,8 +34,8 @@ Follow these steps to set up and run the TINA Chatbot locally.
 Clone the repository to your local machine using Git:
 
 ```bash
-git clone https://github.com/your-username/tina-chatbot.git
-cd tina-chatbot
+git clone https://github.com/your-username/TIME_chatbot.git
+cd TIME_chatbot
 ```
 Follow these steps to setup and run TINA
 
@@ -58,7 +58,13 @@ venv/scripts/activate
 ```bash
 pip install -r requirements.txt
 ```
-4. Create a `.env` file outside the `backend folder` and add the Db credentials
+4. Create DB3
+
+Db3 is a `mySQL` database which stores the flow of the chatbot
+
+- Run the file `creating_db_schema.sql` proceeded by `adding_data.sql` in your MySQL to create a database that is used by the chatbot for the flow
+
+5. Create a `.env` file outside the `backend folder` and add the Db credentials
 ```.env
 # DB1 (Remote MySQL)
 MYSQL_HOST=
@@ -72,17 +78,12 @@ MSSQL_DATABASE=
 MSSQL_USERNAME=
 MSSQL_PASSWORD=""
 
-# DB3 (Local MySQL)
+# DB3 (MySQL for Chatbot)
 DB3_HOST=
 DB3_USER=
 DB3_PASSWORD=""
 DB3_DATABASE=
 ```
-5. Create DB3
-
-Db3 is a `mySQL` database which stores the flow of the chatbot
-
-- Run the file `creating_db_schema.sql` proceeded by `adding_data.sql`
 
 ### Step 3: Start the Chatbot
 #### Run Backend:
@@ -92,11 +93,23 @@ Db3 is a `mySQL` database which stores the flow of the chatbot
 cd backend
 venv/scripts/activate
 ```
-2. Start the Flask Server
+2. Start the API Server for database queries
 ```bash
-python app.py
+uvicorn db_api:app --port 8001
 ```
-The flask server will run at `http://localhost:5000`.
+The db_api server will run at `http://localhost:8001`.
+
+<b>Now, Start a new terminal (Do not close the previous one</b>
+
+3. In the new Terminal, activate the environment again in the `backend` folder
+
+4. Start the application backend
+```bash
+cd backend
+venv/scripts/activate
+uvicorn app:app --port 5000
+```
+The app server will run at `http://localhost:5000`.
 
 #### Run Frontend:
 
