@@ -15,7 +15,7 @@ function addMessage(text, sender) {
     }
     const messageDiv = document.createElement('div');
     messageDiv.classList.add('message', `${sender}-message`);
-    messageDiv.textContent = text;
+    messageDiv.innerHTML = text; // Use innerHTML to render HTML
     messagesContainer.appendChild(messageDiv);
     messagesContainer.scrollTop = messagesContainer.scrollHeight;
 }
@@ -59,6 +59,27 @@ function renderOptions(options, nextState) {
         });
         optionsDiv.appendChild(button);
     });
+    // Add Back button for question_selected state
+    if (nextState === 'question_selected') {
+        const backButton = document.createElement('button');
+        backButton.textContent = 'Back';
+        backButton.classList.add('option-btn', 'back-btn');
+        backButton.addEventListener('click', handleBack);
+        optionsDiv.appendChild(backButton);
+    }
+}
+
+// Function to handle back button
+function handleBack() {
+    if (currentState !== 'question_selected') return; // Prevent back button misuse
+    addMessage('Back', 'user');
+    fetchChatResponse('question_selected', 'BACK');
+    if (optionsDiv) {
+        optionsDiv.remove();
+        optionsDiv = null;
+        allOptions = [];
+    }
+    document.getElementById('userInput').value = '';
 }
 
 // Function to filter options based on input
@@ -73,13 +94,21 @@ function filterOptions(input) {
 // Function to fetch chat responses from the server
 function fetchChatResponse(state, input) {
     console.log(`Fetching response - State: ${state}, Input: ${input}`);
+    // Ensure input is a string to avoid validation errors
+    const payload = {
+        state,
+        input: input || '',
+        user_id: userId
+    };
     fetch('http://localhost:5000/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ state, input, user_id: userId })
+        body: JSON.stringify(payload)
     })
     .then(response => {
-        if (!response.ok) throw new Error(`Network response was not ok: ${response.status}`);
+        if (!response.ok) {
+            throw new Error(`Network response was not ok: ${response.status}`);
+        }
         return response.json();
     })
     .then(data => {

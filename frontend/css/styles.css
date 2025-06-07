@@ -562,3 +562,9 @@
     background-color: #d1e7ff;
     align-self: flex-end;
 }
+
+.back-btn {
+    background-color: #6c757d; /* Gray to distinguish */
+    color: white;
+    margin-left: 10px;
+}

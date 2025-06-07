@@ -6,11 +6,9 @@ import asyncio
 
 app = FastAPI()
 
-# Set up logging
 logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
 
-# Initialize database connections
 db1 = MySQLDB(MYSQL_CREDENTIALS)
 db2 = MSSQLDB(MSSQL_CREDENTIALS)
 db3 = DB3(DB3_CREDENTIALS)
@@ -30,7 +28,7 @@ async def shutdown_event():
 async def get_cities():
     try:
         result = await db1.query("SELECT city FROM locations")
-        cities = [row[0] for row in result]
+        cities = [row['city'] for row in result]
         logger.debug(f"Fetched cities: {cities}")
         return {"success": True, "data": cities}
     except Exception as e:
@@ -45,8 +43,8 @@ async def get_courses(city: str):
         if not result:
             logger.info(f"No location found for city: {city}")
             return {"success": True, "data": []}
-        school_courses = result[0][0].split(',') if result[0][0] else []
-        college_courses = result[0][1].split(',') if result[0][1] else []
+        school_courses = result[0]['school_courses'].split(',') if result[0]['school_courses'] else []
+        college_courses = result[0]['college_courses'].split(',') if result[0]['college_courses'] else []
         all_courses = list(set(school_courses + college_courses))
         all_courses = [course.strip() for course in all_courses if course.strip()]
         logger.debug(f"Raw courses for {city}: {all_courses}")
@@ -60,7 +58,7 @@ async def get_courses(city: str):
         valid_courses = []
         for course in all_courses:
             for row in course_rows:
-                course_id, title, coursename = row
+                course_id, title, coursename = row['id'], row['title'], row['coursename']
                 if course == coursename:
                     valid_courses.append({"name": coursename, "id": course_id})
                     break
@@ -78,7 +76,7 @@ async def get_city_data(city: str):
     try:
         logger.debug(f"Fetching city data for: {city}")
         cities_result = await db1.query("SELECT city FROM locations")
-        cities = [row[0] for row in cities_result]
+        cities = [row['city'] for row in cities_result]
         logger.debug(f"All cities: {cities}")
         valid = city in cities
         courses = []
@@ -86,8 +84,8 @@ async def get_city_data(city: str):
             result = await db1.query("SELECT school_courses, college_courses FROM locations WHERE city = %s", (city,))
             logger.debug(f"Location query result for {city}: {result}")
             if result:
-                school_courses = result[0][0].split(',') if result[0][0] else []
-                college_courses = result[0][1].split(',') if result[0][1] else []
+                school_courses = result[0]['school_courses'].split(',') if result[0]['school_courses'] else []
+                college_courses = result[0]['college_courses'].split(',') if result[0]['college_courses'] else []
                 all_courses = list(set(school_courses + college_courses))
                 all_courses = [course.strip() for course in all_courses if course.strip()]
                 logger.debug(f"Raw courses for {city}: {all_courses}")
@@ -99,7 +97,7 @@ async def get_city_data(city: str):
                     logger.debug(f"Course query result: {course_rows}")
                     for course in all_courses:
                         for row in course_rows:
-                            course_id, title, coursename = row
+                            course_id, title, coursename = row['id'], row['title'], row['coursename']
                             if course == coursename:
                                 courses.append({"name": coursename, "id": course_id})
                                 break
@@ -112,7 +110,6 @@ async def get_city_data(city: str):
                 logger.info(f"No location found for city: {city}")
         else:
             logger.warning(f"Invalid city: {city}")
-        # Deduplicate courses by id
         seen_ids = set()
         unique_courses = []
         for course in courses:
@@ -133,19 +130,41 @@ async def get_course_variants(course_id: int, subcourse: str):
         logger.debug(f"Fetching course variants for course_id={course_id}, subcourse={subcourse}")
         query = "SELECT Coursesubvariant FROM coursedetails WHERE Courseid = %s AND Coursesubvariant LIKE %s"
         result = await db1.query(query, (course_id, f"%{subcourse}%"))
-        variants = [row[0] for row in result]
+        variants = [row['Coursesubvariant'] for row in result]
         logger.debug(f"Course variants: {variants}")
         return {"success": True, "data": variants}
     except Exception as e:
         logger.error(f"Error fetching course variants for course_id={course_id}, subcourse={subcourse}: {e}")
         return {"success": False, "error": f"Failed to fetch course variants: {str(e)}"}
 
+@app.get("/api/course_price")
+async def get_course_price(variant: str):
+    try:
+        logger.debug(f"Fetching price for variant: {variant}")
+        result = await db1.get_course_price(variant)
+        if result:
+            return {"success": True, "data": {"Price": result['Price'], "OfferPrice": result['OfferPrice']}}
+        return {"success": False, "error": "No price found for this variant"}
+    except Exception as e:
+        logger.error(f"Error fetching price for variant {variant}: {e}")
+        return {"success": False, "error": f"Failed to fetch price: {str(e)}"}
+
+@app.get("/api/scholarship_exams")
+async def get_scholarship_exams(course: str, city: str):
+    try:
+        logger.debug(f"Fetching scholarship exams for course: {course}, city: {city}")
+        result = db2.get_scholarship_exams(course, city)
+        return {"success": True, "data": result}
+    except Exception as e:
+        logger.error(f"Error fetching scholarship exams for course {course}, city {city}: {e}")
+        return {"success": False, "error": f"Failed to fetch scholarship exams: {str(e)}"}
+
 @app.get("/api/subcourses")
 async def get_subcourses(course: str):
     try:
         logger.debug(f"Fetching subcourses for course: {course}")
         result = await db3.query_subcourses(course)
-        subcourses = [row[0] for row in result]
+        subcourses = [row['subcourse'] for row in result]
         logger.debug(f"Subcourses: {subcourses}")
         return {"success": True, "data": subcourses}
     except Exception as e:
@@ -157,7 +176,7 @@ async def get_categories():
     try:
         logger.debug("Fetching categories")
         result = await db3.get_categories()
-        categories = [row[1] for row in result]
+        categories = [row['name'] for row in result]
         logger.debug(f"Categories: {categories}")
         return {"success": True, "data": categories}
     except Exception as e:
@@ -181,7 +200,7 @@ async def get_questions(category_id: int):
     try:
         logger.debug(f"Fetching questions for category_id: {category_id}")
         result = await db3.get_questions(category_id)
-        questions = [row[1] for row in result]
+        questions = [row['question_text'] for row in result]
         logger.debug(f"Questions: {questions}")
         return {"success": True, "data": questions}
     except Exception as e:

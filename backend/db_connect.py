@@ -3,6 +3,8 @@ import pyodbc
 import logging
 import asyncio
 from contextlib import asynccontextmanager
+from datetime import date
+from datetime import datetime
 
 logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
@@ -30,7 +32,7 @@ class MySQLDB:
     @asynccontextmanager
     async def get_cursor(self):
         async with self.pool.acquire() as conn:
-            async with conn.cursor() as cursor:
+            async with conn.cursor(aiomysql.DictCursor) as cursor:
                 yield cursor
 
     async def query(self, query, params=None):
@@ -42,6 +44,16 @@ class MySQLDB:
                 return cursor.rowcount
         except Exception as e:
             logger.error(f"MySQL query error: {e}, query: {query}")
+            raise
+
+    async def get_course_price(self, variant):
+        query = "SELECT Price, OfferPrice FROM coursedetails WHERE Coursesubvariant = %s"
+        try:
+            async with self.get_cursor() as cursor:
+                await cursor.execute(query, (variant,))
+                return await cursor.fetchone()
+        except Exception as e:
+            logger.error(f"Error fetching course price for variant {variant}: {e}")
             raise
 
     async def close(self):
@@ -77,11 +89,24 @@ class MSSQLDB:
             else:
                 self.cursor.execute(query)
             if query.strip().upper().startswith("SELECT"):
-                return self.cursor.fetchall()
+                columns = [desc[0] for desc in self.cursor.description]
+                results = self.cursor.fetchall()
+                return [dict(zip(columns, row)) for row in results]
             self.conn.commit()
             return self.cursor.rowcount
         except Exception as e:
             logger.error(f"MSSQL query error: {e}, query: {query}")
+            raise
+
+    def get_scholarship_exams(self, course, city):
+        query = "SELECT course, city, description, ttse_rstdate, ttse_date FROM ttse_creation WHERE course = ? AND (city = ? OR city IN ('All', 'all'))"
+        try:
+            self.cursor.execute(query, (course, city))
+            columns = [desc[0] for desc in self.cursor.description]
+            results = self.cursor.fetchall()
+            return [dict(zip(columns, row)) for row in results]
+        except Exception as e:
+            logger.error(f"Error fetching scholarship exams for course {course}, city {city}: {e}")
             raise
 
     def close(self):
@@ -114,7 +139,7 @@ class DB3:
     @asynccontextmanager
     async def get_cursor(self):
         async with self.pool.acquire() as conn:
-            async with conn.cursor() as cursor:
+            async with conn.cursor(aiomysql.DictCursor) as cursor:
                 yield cursor
 
     async def query(self, query, params=None):
@@ -166,23 +191,93 @@ class DB3:
         return await self.query(query, (category_id,))
 
     async def get_answer(self, question_id, context, db1, db2):
-        query = "SELECT answer_text FROM answers WHERE question_id = %s"
+        query = """
+            SELECT q.source_type, q.source_detail, sa.answer_text AS static_answer, 
+                   ua.answer_text AS url_answer
+            FROM questions q
+            LEFT JOIN static_answers sa ON q.id = sa.question_id
+            LEFT JOIN url_answers ua ON q.id = ua.question_id 
+                AND ua.subcourse = %s AND ua.variant = %s
+            WHERE q.id = %s
+        """
         try:
             async with self.get_cursor() as cursor:
-                await cursor.execute(query, (question_id,))
+                await cursor.execute(query, (context.get('subcourse'), context.get('training_type'), question_id))
                 result = await cursor.fetchone()
-                if result:
-                    answer = result[0]
-                    if "{course}" in answer:
-                        answer = answer.format(**context)
-                    return answer
-                return "No answer found for this question."
+                if not result:
+                    return "No answer found for this question."
+
+                source_type = result['source_type']
+                source_detail = result['source_detail']
+
+                if source_type == 'STATIC':
+                    answer = result['static_answer']
+                    if answer:
+                        return answer.format(**context) if '{city}' in answer else answer
+                    return "No static answer available."
+
+                elif source_type == 'URL':
+                    if result['url_answer']:
+                        return result['url_answer']
+                    return "No URL answer available for this course variant."
+
+                elif source_type == 'DB':
+                    if source_detail == 'coursedetails':
+                        price_info = await db1.get_course_price(context.get('training_type'))
+                        if price_info:
+                            answer = f"The price for {context.get('training_type')} is **₹{price_info['Price']}**."
+                            if price_info['OfferPrice'] is not None and price_info['OfferPrice'].strip():
+                                answer += f" Also, the offer price for the course is **₹{price_info['OfferPrice']}**."
+                            return answer
+                        return "No price information available for this course variant."
+                    elif source_detail == 'ttse_creation':
+                        exams = db2.get_scholarship_exams(context.get('course'), context.get('city'))
+                        if not exams:
+                            return f"No scholarship exams available for {context.get('course')}."
+                        answer = f"Scholarship exam(s) for {context.get('course')}:\n\n"
+                        current_date = date.today()
+                        valid_exams = False
+                        for exam in exams:
+                            if exam['city'].lower() == 'all':
+                                test_type = 'All India'
+                            else:
+                                test_type = exam['city']
+                            reg_date_str = exam['ttse_rstdate']
+                            exam_date_str = exam['ttse_date']
+                            try:
+                                reg_date = datetime.strptime(reg_date_str, '%Y-%m-%d').date()
+                                exam_date = exam_date_str
+                            except ValueError:
+                                logger.error(f"Invalid date format for ttse_rstdate: {reg_date_str}")
+                                continue
+                            reg_text = f"Registration closed on {reg_date:%Y-%m-%d}" if reg_date < current_date else f"Registration Date: {reg_date:%Y-%m-%d}"
+                            answer += (
+                                f"Test: {exam['description']}\n"
+                                f"Test type: {test_type}\n"
+                                f"{reg_text}\n"
+                                f"Exam Date: {exam_date}\n\n"
+                            )
+                            valid_exams = True
+                        if not valid_exams:
+                            return f"No scholarship exams available for {context.get('course')} in {context.get('city')}."
+                        return f"<pre>{answer.strip()}</pre>"
+                    elif source_detail == 'exam_info':
+                        query = f"SELECT {source_detail} FROM exam_info WHERE course = %s"
+                        result = await db1.query(query, (context.get('course'),))
+                        if result:
+                            return result[0][source_detail]
+                    elif source_detail == 'batch_sizes':
+                        query = "SELECT batch_size FROM batch_sizes WHERE city = %s AND course = %s AND subcourse = %s AND variant = %s"
+                        result = await db1.query(query, (context.get('city'), context.get('course'), context.get('subcourse'), context.get('training_type')))
+                        if result:
+                            return f"Batch size: {result[0]['batch_size']}"
+                    return "No answer found for this question."
         except Exception as e:
-            logger.error(f"Error fetching answer: {e}")
+            logger.error(f"Error fetching answer for question {question_id}: {e}")
             raise
 
     async def log_query(self, user_id, course, subcourse, training_type, category_id, question_id, answer):
-        query = """INSERT INTO query_logs (user_id, course, subcourse, training_type, category_id, question_id, answer, created_at)
+        query = """INSERT INTO query_history (user_id, course, subcourse, training_type, category_id, question_id, answer_text, queried_at)
                    VALUES (%s, %s, %s, %s, %s, %s, %s, NOW())"""
         try:
             await self.query(query, (user_id, course, subcourse, training_type, category_id, question_id, answer))

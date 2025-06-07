@@ -36,8 +36,8 @@ CREATE TABLE static_answers (
 CREATE TABLE url_answers (
     id INT PRIMARY KEY AUTO_INCREMENT,
     question_id INT NOT NULL,
-    subcourse VARCHAR(50),  -- e.g., "CAT26"
-    variant VARCHAR(50),    -- e.g., "Online Live Course"
+    subcourse VARCHAR(50),
+    variant VARCHAR(50),
     url VARCHAR(255) NOT NULL,
     answer_text TEXT NOT NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -53,62 +53,12 @@ CREATE TABLE subcourses (
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
--- Table: coursetypes
-CREATE TABLE coursetypes (
-    id INT PRIMARY KEY AUTO_INCREMENT,
-    course VARCHAR(50) NOT NULL,
-    coursetype VARCHAR(50) NOT NULL,
-    variant VARCHAR(100),
-    usertype VARCHAR(50),
-    is_active BOOLEAN DEFAULT TRUE,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);
-
--- Table: coursefee
-CREATE TABLE coursefee (
-    id INT PRIMARY KEY AUTO_INCREMENT,
-    city VARCHAR(50) NOT NULL,
-    course VARCHAR(50) NOT NULL,
-    subcourse VARCHAR(50) NOT NULL,
-    variant VARCHAR(50) NOT NULL,
-    actual_lumpsum INT,
-    actual_instalments INT,
-    discount INT,
-    lumpsum INT,
-    instalments INT,
-    first_instalment INT,
-    second_instalment INT,
-    third_instalment INT,
-    status ENUM('active', 'inactive') DEFAULT 'active',
-    mode ENUM('online', 'offline') NOT NULL,
-    is_active BOOLEAN DEFAULT TRUE,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);
-
--- Table: discounts
-CREATE TABLE discounts (
-    id INT PRIMARY KEY AUTO_INCREMENT,
-    course VARCHAR(50) NOT NULL,
-    subcourse VARCHAR(50) NOT NULL,
-    variant VARCHAR(50) NOT NULL,
-    discounttype VARCHAR(50) NOT NULL,
-    discount_range VARCHAR(20),
-    city VARCHAR(50) NOT NULL,
-    discount_amount INT,
-    test_name VARCHAR(50),
-    discount_reason VARCHAR(100),
-    discount_start_date DATE,
-    discount_end_date DATE,
-    is_active BOOLEAN DEFAULT TRUE,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);
-
 CREATE TABLE user_details (
     id INT PRIMARY KEY AUTO_INCREMENT,
     name VARCHAR(100) NOT NULL,
     mobile VARCHAR(15) NOT NULL,
     city VARCHAR(50),
-    demo_otp VARCHAR(10),  -- Added column for OTP
+    demo_otp VARCHAR(10),
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -117,7 +67,7 @@ CREATE TABLE query_history (
     user_id INT NOT NULL,
     course VARCHAR(50),
     subcourse VARCHAR(50),
-    training_type VARCHAR(50),
+    training_type VARCHAR(100),
     category_id INT,
     question_id INT,
     answer_text TEXT,
@@ -135,7 +85,7 @@ CREATE TABLE url_answer_cache (
     cached_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
--- Table: batch_sizes (New)
+-- Table: batch_sizes
 CREATE TABLE batch_sizes (
     id INT PRIMARY KEY AUTO_INCREMENT,
     city VARCHAR(50) NOT NULL,
@@ -147,7 +97,7 @@ CREATE TABLE batch_sizes (
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
--- Table: exam_info (New)
+-- Table: exam_info
 CREATE TABLE exam_info (
     id INT PRIMARY KEY AUTO_INCREMENT,
     course VARCHAR(50) NOT NULL,
