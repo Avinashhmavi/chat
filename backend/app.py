@@ -7,6 +7,7 @@ from chatbot_engine import ChatbotEngine
 import httpx
 import logging
 import asyncio
+import random
 
 app = FastAPI()
 
@@ -278,6 +279,68 @@ async def chat(data: ChatRequest):
                     "options": questions,
                     "next_state": "question_selected"
                 }
+
+            if question_id == 22:
+                course_content = await db1.get_course_content(context.get("course_id"), context.get("course"))
+                if not course_content:
+                    questions = await call_db_api("/api/questions", params={"category_id": context.get("category_id")})
+                    return {
+                        "response": "No results found for this course.",
+                        "options": questions,
+                        "next_state": "question_selected"
+                    }
+                options = [item['Subtitle'] for item in course_content]
+                context["course_content"] = course_content
+                chatbot.set_context(user_id, context)
+                return {
+                    "response": "Please select a result to view:",
+                    "options": options,
+                    "next_state": "result_selected"
+                }
+
+            elif question_id == 23:
+                testimonials = await db1.get_testimonials(context.get("city"), context.get("course"))
+                if not testimonials:
+                    questions = await call_db_api("/api/questions", params={"category_id": context.get("category_id")})
+                    return {
+                        "response": "No testimonials found for this course.",
+                        "options": questions,
+                        "next_state": "question_selected"
+                    }
+                random_testimonial = random.choice(testimonials)
+                video_url = random_testimonial['video_url']
+                html_response = f"""
+                <div class="prompt-item">
+                    <iframe width="100%" height="180" src="https://{video_url}" title="Testimonial Video" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen=""></iframe>
+                    <p class="prompt-text">Watch our introduction video</p>
+                </div>
+                """
+                context["testimonials"] = testimonials
+                chatbot.set_context(user_id, context)
+                return {
+                    "response": html_response + "Would you like to see another testimonial video?",
+                    "options": ["Yes", "No"],
+                    "next_state": "testimonial_response"
+                }
+
+            elif question_id == 26:
+                bschool_content = await db1.get_bschool_selection(context.get("course_id"))
+                if not bschool_content:
+                    questions = await call_db_api("/api/questions", params={"category_id": context.get("category_id")})
+                    return {
+                        "response": "No B-School Selection data found for this course.",
+                        "options": questions,
+                        "next_state": "question_selected"
+                    }
+                options = [item['Subtitle'] for item in bschool_content]
+                context["bschool_content"] = bschool_content
+                chatbot.set_context(user_id, context)
+                return {
+                    "response": "Please select a B-School Selection option:",
+                    "options": options,
+                    "next_state": "result_selected"
+                }
+
             answer = await call_db_api("/api/answer", params={
                 "question_id": question_id,
                 "course": context.get("course", ""),
@@ -289,6 +352,60 @@ async def chat(data: ChatRequest):
             questions = await call_db_api("/api/questions", params={"category_id": context.get("category_id")})
             return {
                 "response": answer,
+                "options": questions,
+                "next_state": "question_selected"
+            }
+
+        elif state == "result_selected":
+            context = chatbot.get_context(user_id)
+            selected_subtitle = user_input
+            course_content = context.get("course_content", [])
+            bschool_content = context.get("bschool_content", [])
+            content = course_content + bschool_content
+            selected_item = next((item for item in content if item["Subtitle"] == selected_subtitle), None)
+            if selected_item:
+                html_response = f"""
+                <div class="prompt-item">
+                    <a href="https://www.time4education.com{selected_item['Link']}" class="prompt-link" target="_blank">
+                        <i class="fas fa-link"></i> {selected_item['Subtitle']}
+                    </a>
+                </div>
+                """
+                questions = await call_db_api("/api/questions", params={"category_id": context.get("category_id")})
+                return {
+                    "response": html_response + "How can I assist you further?",
+                    "options": questions,
+                    "next_state": "question_selected"
+                }
+            else:
+                questions = await call_db_api("/api/questions", params={"category_id": context.get("category_id")})
+                return {
+                    "response": "Invalid selection. Please choose a valid option.",
+                    "options": questions,
+                    "next_state": "question_selected"
+                }
+
+        elif state == "testimonial_response":
+            context = chatbot.get_context(user_id)
+            if user_input.lower() == "yes":
+                testimonials = context.get("testimonials", [])
+                if testimonials:
+                    random_testimonial = random.choice(testimonials)
+                    video_url = random_testimonial['video_url']
+                    html_response = f"""
+                    <div class="prompt-item">
+                        <iframe width="100%" height="180" src="https://{video_url}" title="Testimonial Video" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen=""></iframe>
+                        <p class="prompt-text">Watch our introduction video</p>
+                    </div>
+                    """
+                    return {
+                        "response": html_response + "Would you like to see another testimonial video?",
+                        "options": ["Yes", "No"],
+                        "next_state": "testimonial_response"
+                    }
+            questions = await call_db_api("/api/questions", params={"category_id": context.get("category_id")})
+            return {
+                "response": "How can I assist you further?",
                 "options": questions,
                 "next_state": "question_selected"
             }

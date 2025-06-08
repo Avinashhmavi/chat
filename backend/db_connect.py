@@ -56,6 +56,66 @@ class MySQLDB:
             logger.error(f"Error fetching course price for variant {variant}: {e}")
             raise
 
+    async def get_course_content(self, course_id, coursename):
+        query = """
+            SELECT Subtitle, Link
+            FROM coursecontent
+            WHERE Course = %s
+            AND Title LIKE %s
+            AND Contentstatus = 'yes'
+        """
+        try:
+            async with self.get_cursor() as cursor:
+                await cursor.execute(query, (course_id, f"%{coursename} Results%"))
+                return await cursor.fetchall()
+        except Exception as e:
+            logger.error(f"Error fetching course content: {e}")
+            raise
+
+    async def get_testimonials(self, city, course_title):
+        query = """
+            SELECT video_url
+            FROM course_testmonials
+            WHERE city = %s
+            AND course LIKE %s
+        """
+        try:
+            async with self.get_cursor() as cursor:
+                await cursor.execute(query, (city, f"%{course_title}%"))
+                results = await cursor.fetchall()
+                if not results:
+                    # Fallback to course-only filter if city not found
+                    query = """
+                        SELECT video_url
+                        FROM course_testmonials
+                        WHERE course LIKE %s
+                    """
+                    await cursor.execute(query, (f"%{course_title}%",))
+                    results = await cursor.fetchall()
+                return results
+        except Exception as e:
+            logger.error(f"Error fetching testimonials: {e}")
+            raise
+
+    async def get_bschool_selection(self, course_id):
+        """
+        Fetch B-School Selection data based on course ID.
+        """
+        query = """
+            SELECT Subtitle, Link
+            FROM coursecontent
+            WHERE Course = %s
+            AND Title LIKE %s
+            AND Contentstatus IN ('Yes', 'yes')
+        """
+        try:
+            async with self.get_cursor() as cursor:
+                await cursor.execute(query, (course_id, '%B-School Selection%'))
+                return await cursor.fetchall()
+        except Exception as e:
+            logger.error(f"Error fetching B-School Selection data: {e}")
+            raise
+        
     async def close(self):
         if self.pool:
             self.pool.close()
