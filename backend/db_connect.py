@@ -285,9 +285,9 @@ class DB3:
                     if source_detail == 'coursedetails':
                         price_info = await db1.get_course_price(context.get('training_type'))
                         if price_info:
-                            answer = f"The price for {context.get('training_type')} is **₹{price_info['Price']}**."
+                            answer = f"The price for {context.get('training_type')} is ₹{price_info['Price']}."
                             if price_info['OfferPrice'] is not None and price_info['OfferPrice'].strip():
-                                answer += f" Also, the offer price for the course is **₹{price_info['OfferPrice']}**."
+                                answer += f" Also, the offer price for the course is ₹{price_info['OfferPrice']}."
                             return answer
                         return "No price information available for this course variant."
                     elif source_detail == 'ttse_creation':

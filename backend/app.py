@@ -82,32 +82,32 @@ async def register(data: RegisterRequest):
             logger.error('Validation failed: name=%s, mobile=%s', name, mobile)
             raise HTTPException(status_code=400, detail="Valid name and 10-digit mobile are required")
         user_id, otp = await chatbot.register_user(name, mobile, 'Unknown')
-        logger.info('Registration successful for user_id: %s', user_id)
+        logger.info(f'Registration successful for user_id: {user_id}')
         return {"success": True, "message": "Registration successful", "otp": otp, "user_id": user_id}
     except Exception as e:
-        logger.error('Error processing request: %s', str(e))
+        logger.error(f'Error processing request: {str(e)}')
         raise HTTPException(status_code=400, detail="Invalid request format")
 
 @app.post("/verify-otp")
 async def verify_otp(data: VerifyOTPRequest):
     try:
-        logger.debug('Received OTP verification data: %s', data.dict())
+        logger.debug(f'Received OTP verification data: {data.dict()}')
         if not data.user_id or not data.otp:
-            logger.error('User ID or OTP missing: user_id=%s, otp=%s', data.user_id, data.otp)
+            logger.error(f'User ID or OTP missing: user_id={data.user_id}, otp={data.otp}')
             raise HTTPException(status_code=400, detail="User ID and OTP are required")
         if await chatbot.verify_otp(data.user_id, data.otp):
-            logger.info('OTP verified for user_id: %s', data.user_id)
+            logger.info(f'OTP verified for user_id: {data.user_id}')
             return {"success": True, "message": "OTP verified successfully", "user_id": data.user_id}
-        logger.warning('Invalid OTP for user_id: %s', data.user_id)
+        logger.warning(f'Invalid OTP for user_id: {data.user_id}')
         raise HTTPException(status_code=400, detail="Invalid OTP")
     except Exception as e:
-        logger.error('Error verifying OTP: %s', str(e))
+        logger.error(f'Error verifying OTP: {e}')
         raise HTTPException(status_code=400, detail="Invalid request format")
 
 @app.post("/chat")
 async def chat(data: ChatRequest):
     try:
-        logger.debug(f"Received chat data: {data.dict()}")
+        logger.debug(f"Received data: {data.dict()}")
         state = data.state
         user_input = data.input.strip()
         user_id = data.user_id
@@ -143,7 +143,7 @@ async def chat(data: ChatRequest):
                     "next_state": "city_selected"
                 }
             return {
-                "response": f"You selected {selected_city}. Which course are you looking for?",
+                "response": f"You selected: {selected_city}. Which course are you looking for?",
                 "options": [course["name"] for course in city_data["courses"]],
                 "next_state": "course_selected"
             }
@@ -280,6 +280,68 @@ async def chat(data: ChatRequest):
                     "next_state": "question_selected"
                 }
 
+            if context.get("category_id") == 8:
+                    question_columns = {
+                        39: "eligibility_criteria",
+                        40: "exam_dates",
+                        41: "registration_process",
+                        42: "score_validity",
+                        43: "top_b_schools",
+                        44: "mba_advantages",
+                        45: "selection_process",
+                        46: "attempts_allowed"
+                    }
+                    column = question_columns.get(question_id)
+                    if column:
+                        query = f"""
+                            SELECT `{column}`
+                            FROM exam_info
+                            WHERE course LIKE %s
+                            LIMIT 1
+                        """
+                        course_param = f"%{context.get('course', '')}%"
+                        logger.debug(f"Executing query: {query} with parameter: {course_param}")
+                        try:
+                            async with db3.get_cursor() as cursor:
+                                logger.debug("Before executing query")
+                                await cursor.execute(query, (course_param,))
+                                logger.debug("After executing query")
+                                result = await cursor.fetchone()
+                                logger.debug(f"Query result: {result}")
+                                if result:
+                                    answer = result.get(column)
+                                    logger.debug(f"Answer extracted: {answer}")
+                                    if answer:
+                                        await db3.log_query(
+                                            user_id,
+                                            context.get("course"),
+                                            context.get("subcourse"),
+                                            context.get("training_type"),
+                                            context.get("category_id"),
+                                            question_id,
+                                            answer
+                                        )
+                                        questions = await call_db_api("/api/questions", params={"category_id": context.get("category_id")})
+                                        return {
+                                            "response": answer,
+                                            "options": questions,  # Move options here
+                                            "next_state": "question_selected"
+                                        }
+                                    else:
+                                        logger.warning(f"No data found for column {column} in result")
+                                else:
+                                    logger.warning(f"No data found for course: {context.get('course', '')}")
+                        except Exception as e:
+                            logger.error(f"Error fetching exam_info: {e}")
+                    else:
+                        logger.error(f"Invalid question_id: {question_id} for category_id 8")
+                    questions = await call_db_api("/api/questions", params={"category_id": context.get("category_id")})
+                    return {
+                        "response": "No information found for this question.",
+                        "options": questions,  # Move options here
+                        "next_state": "question_selected"
+                    }            
+                    
             if question_id == 22:
                 course_content = await db1.get_course_content(context.get("course_id"), context.get("course"))
                 if not course_content:
@@ -316,9 +378,10 @@ async def chat(data: ChatRequest):
                 </div>
                 """
                 context["testimonials"] = testimonials
+                context["viewed_testimonials"] = [video_url]
                 chatbot.set_context(user_id, context)
                 return {
-                    "response": html_response + "Would you like to see another testimonial video?",
+                    "response": html_response,
                     "options": ["Yes", "No"],
                     "next_state": "testimonial_response"
                 }
@@ -352,8 +415,13 @@ async def chat(data: ChatRequest):
             questions = await call_db_api("/api/questions", params={"category_id": context.get("category_id")})
             return {
                 "response": answer,
-                "options": questions,
-                "next_state": "question_selected"
+                "options": [],
+                "next_state": "question_selected",
+                "follow_up": {
+                    "response": "How can I assist you further?",
+                    "options": questions,
+                    "next_state": "question_selected"
+                }
             }
 
         elif state == "result_selected":
@@ -373,9 +441,14 @@ async def chat(data: ChatRequest):
                 """
                 questions = await call_db_api("/api/questions", params={"category_id": context.get("category_id")})
                 return {
-                    "response": html_response + "How can I assist you further?",
-                    "options": questions,
-                    "next_state": "question_selected"
+                    "response": html_response,
+                    "options": [],
+                    "next_state": "question_selected",
+                    "follow_up": {
+                        "response": "How can I assist you further?",
+                        "options": questions,
+                        "next_state": "question_selected"
+                    }
                 }
             else:
                 questions = await call_db_api("/api/questions", params={"category_id": context.get("category_id")})
@@ -389,8 +462,10 @@ async def chat(data: ChatRequest):
             context = chatbot.get_context(user_id)
             if user_input.lower() == "yes":
                 testimonials = context.get("testimonials", [])
-                if testimonials:
-                    random_testimonial = random.choice(testimonials)
+                viewed_testimonials = context.get("viewed_testimonials", [])
+                unseen_testimonials = [t for t in testimonials if t['video_url'] not in viewed_testimonials]
+                if unseen_testimonials:
+                    random_testimonial = random.choice(unseen_testimonials)
                     video_url = random_testimonial['video_url']
                     html_response = f"""
                     <div class="prompt-item">
@@ -398,16 +473,36 @@ async def chat(data: ChatRequest):
                         <p class="prompt-text">Watch our introduction video</p>
                     </div>
                     """
+                    viewed_testimonials.append(video_url)
+                    context["viewed_testimonials"] = viewed_testimonials
+                    chatbot.set_context(user_id, context)
                     return {
-                        "response": html_response + "Would you like to see another testimonial video?",
+                        "response": html_response,
                         "options": ["Yes", "No"],
                         "next_state": "testimonial_response"
                     }
+                else:
+                    questions = await call_db_api("/api/questions", params={"category_id": context.get("category_id")})
+                    return {
+                        "response": "No more testimonial videos available.",
+                        "options": [],
+                        "next_state": "question_selected",
+                        "follow_up": {
+                            "response": "How can I assist you further?",
+                            "options": questions,
+                            "next_state": "question_selected"
+                        }
+                    }
             questions = await call_db_api("/api/questions", params={"category_id": context.get("category_id")})
             return {
-                "response": "How can I assist you further?",
-                "options": questions,
-                "next_state": "question_selected"
+                "response": "",
+                "options": [],
+                "next_state": "question_selected",
+                "follow_up": {
+                    "response": "How can I assist you further?",
+                    "options": questions,
+                    "next_state": "question_selected"
+                }
             }
 
         return {
@@ -421,9 +516,14 @@ async def chat(data: ChatRequest):
         try:
             category_options = await call_db_api("/api/categories")
             return {
-                "response": "Sorry, something went wrong. Let’s get back on track. How can I assist you further?",
-                "options": category_options,
-                "next_state": "category_selected"
+                "response": "Sorry, something went wrong. Let’s get back on track.",
+                "options": [],
+                "next_state": "category_selected",
+                "follow_up": {
+                    "response": "How can I assist you further?",
+                    "options": category_options,
+                    "next_state": "category_selected"
+                }
             }
         except Exception as fallback_e:
             logger.error(f"Fallback error fetching categories: {str(fallback_e)}")
