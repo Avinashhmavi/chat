@@ -1,32 +1,61 @@
 # Test DB1 (MySQL)
-import pymysql
-conn = pymysql.connect(
-    host='36.50.3.169',
-    user='dbuser',
-    password="5v)P11,D",
-    database='timeonli_sample'
-)
-conn.close()
-print("DB1 connected")
+import aiomysql
+import asyncio
+import os
+from dotenv import load_dotenv
+
+# Load environment variables from .env file
+load_dotenv()
+
+async def test_db1():
+    try:
+        conn = await aiomysql.connect(
+            host=os.getenv('MYSQL_HOST'),
+            user=os.getenv('MYSQL_USER'),
+            password=os.getenv('MYSQL_PASSWORD'),
+            db=os.getenv('MYSQL_DATABASE')
+        )
+        conn.close()
+        print("DB1 connected")
+    except Exception as e:
+        print(f"DB1 connection failed: {e}")
 
 # Test DB3 (Local MySQL)
-conn = pymysql.connect(
-    host='localhost',
-    user='root',
-    password='Rudra@1879',
-    database='time_db3'
-)
-conn.close()
-print("DB3 connected")
+async def test_db3():
+    try:
+        conn = await aiomysql.connect(
+            host=os.getenv('DB3_HOST'),
+            user=os.getenv('DB3_USER'),
+            password=os.getenv('DB3_PASSWORD'),
+            db=os.getenv('DB3_DATABASE')
+        )
+        conn.close()
+        print("DB3 connected")
+    except Exception as e:
+        print(f"DB3 connection failed: {e}")
 
 # Test DB2 (MSSQL)
 import pyodbc
-conn = pyodbc.connect(
-    'DRIVER={ODBC Driver 17 for SQL Server};'
-    'SERVER=36.50.3.169;'
-    'DATABASE=VendorDB;'
-    'UID=vendorlogin;'
-    'PWD=Vendor@123'
-)
-conn.close()
-print("DB2 connected")
+
+def test_db2():
+    try:
+        conn = pyodbc.connect(
+            f"DRIVER={{SQL Server}};"
+            f"SERVER={os.getenv('MSSQL_SERVER')};"
+            f"DATABASE={os.getenv('MSSQL_DATABASE')};"
+            f"UID={os.getenv('MSSQL_USERNAME')};"
+            f"PWD={os.getenv('MSSQL_PASSWORD')}"
+        )
+        conn.close()
+        print("DB2 connected")
+    except Exception as e:
+        print(f"DB2 connection failed: {e}")
+
+# Run async tests
+async def main():
+    await test_db1()
+    await test_db3()
+    test_db2()
+
+if __name__ == "__main__":
+    asyncio.run(main())
