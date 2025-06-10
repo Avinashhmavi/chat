@@ -128,8 +128,26 @@ async def get_city_data(city: str):
 async def get_course_variants(course_id: int, subcourse: str):
     try:
         logger.debug(f"Fetching course variants for course_id={course_id}, subcourse={subcourse}")
-        query = "SELECT Coursesubvariant FROM coursedetails WHERE Courseid = %s AND Coursesubvariant LIKE %s"
-        result = await db1.query(query, (course_id, f"%{subcourse}%"))
+        # Split subcourse into course and year (e.g., "CAT 2025" -> "CAT", "2025")
+        try:
+            course, year = subcourse.split(' ', 1)
+            year_pattern = f"%{year}%"
+            general_pattern = f"%{course} Classroom course%"
+        except ValueError:
+            # Fallback if subcourse doesn't follow "course year" format
+            course = subcourse
+            year_pattern = "%"
+            general_pattern = f"%{course} Classroom course%"
+
+        # Query combining year-specific and general classroom variants
+        query = """
+            SELECT Coursesubvariant FROM coursedetails 
+            WHERE Courseid = %s AND Coursesubvariant LIKE %s
+            UNION
+            SELECT Coursesubvariant FROM coursedetails 
+            WHERE Courseid = %s AND Coursesubvariant LIKE %s
+        """
+        result = await db1.query(query, (course_id, year_pattern, course_id, general_pattern))
         variants = [row['Coursesubvariant'] for row in result]
         logger.debug(f"Course variants: {variants}")
         return {"success": True, "data": variants}

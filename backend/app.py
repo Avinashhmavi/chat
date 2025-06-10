@@ -441,7 +441,6 @@ async def chat(data: ChatRequest):
                 html_response = f"""
                 <div class="prompt-item">
                     <iframe width="100%" height="180" src="https://{video_url}" title="Testimonial Video" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen=""></iframe>
-                    <p class="prompt-text">Watch our introduction video</p>
                 </div>
                 """
                 context["testimonials"] = testimonials
