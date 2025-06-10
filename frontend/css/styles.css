@@ -295,103 +295,17 @@
     transition: all 0.2s ease;
     text-decoration: none;
     font-weight: 500;
+    background-color: #4e46b5; /* Light blue for odd items */
+    color:#D9D8EF;
 }
 
 /* Hover Effects */
 .prompts-inline .option-btn:hover {
     transform: translateY(-3px);
     box-shadow: 1px 3px 6px rgba(0,0,0,0.3);
-}
-
-/* Prompt Items - Alternating Colors */
-.prompts-inline .option-btn:nth-child(odd) {
-    background-color: #4e46b5; /* Light blue for odd items */
-    color:#D9D8EF;
-}
-
-.prompts-inline .option-btn:nth-child(even) {
     background-color: #ffc107; /* Light purple for even items */
     color:#414141;
 }
-
-/*----------------------*/
-
-/* Prompts inline Container */
-.prompts-block {
- display: block; 
-    margin-bottom:10px;
-   
-}
-
-.prompts-block a {
-    background: transparent;
-    border: none;
-    padding: 5px 10px;
-    cursor: pointer;
-    white-space: nowrap;
-    font-size: 14px;
-    line-height: 18px;
-    display: block;
-    margin: 0 8px 8px 0;
-    border-radius: 20px;
-    transition: all 0.2s ease;
-    text-decoration: none;
-    font-weight: 500;
-}
-
-/* Hover Effects */
-.prompts-block a:hover {
-    transform: translateY(-3px);
-    box-shadow: 1px 3px 6px rgba(0,0,0,0.3);
-}
-
-/* Prompt Items - Alternating Colors */
-.prompts-block a:nth-child(odd) {
-    border: 1px solid #4e46b5; /* Light blue for odd items */
-    color:#4e46b5;
-    background:#efeeff;
-}
-
-.prompts-block a:nth-child(even) {
-    border:1px solid #ffc107; /* Light purple for even items */
-    color:#414141;
-    background:#efeeff;
-}
-
-/*------*/
-
-/* Prompts inline Container */
-.prompts-clean {
- display: block; 
-    margin-bottom:10px;
-   
-}
-
-.prompts-clean a {
-    background: #fff;
-    border: none;
-    padding: 5px 10px;
-    cursor: pointer;
-    white-space: nowrap;
-    font-size: 14px;
-    line-height: 18px;
-    display: inline-block;
-    margin: 0 8px 8px 0;
-    border-radius: 20px;
-    transition: all 0.2s ease;
-    text-decoration: none;
-    font-weight: 500;
-    color:#4e46b5;
-    box-shadow: 1px 3px 6px rgba(0,0,0,0.3);
-}
-
-/* Hover Effects */
-.prompts-clean a:hover {
-    transform: translateY(-3px);
-    
-}
-
-
 
 
 /* For longer prompts that should wrap */
