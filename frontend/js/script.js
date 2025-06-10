@@ -21,30 +21,31 @@ function addMessage(text, sender) {
 }
 
 // Function to display options
-function displayOptions(options, nextState) {
+function displayOptions(options, nextState, backOptions = []) {
     const messagesContainer = document.getElementById('messagesContainer');
     const userInput = document.getElementById('userInput');
-    if (!messagesContainer) {
-        console.error('Messages container not found');
+    if (!messagesContainer || !userInput) {
+        console.error('Messages container or user input not found');
         return;
     }
-    if (!userInput) {
-        console.error('User input not found');
-        return;
+    allOptions = options.concat(backOptions); // Combine regular and back options
+    if (optionsDiv) {
+        optionsDiv.remove(); // Remove previous optionsDiv if exists
+        optionsDiv = null;
     }
-    allOptions = options; // Store all options for filtering
     optionsDiv = document.createElement('div');
     optionsDiv.classList.add('prompts-inline');
-    renderOptions(options, nextState);
+    renderOptions(options, backOptions, nextState);
     messagesContainer.appendChild(optionsDiv);
     messagesContainer.scrollTop = messagesContainer.scrollHeight;
     userInput.value = ''; // Clear input on new options
 }
 
 // Function to render filtered options
-function renderOptions(options, nextState) {
+function renderOptions(options, backOptions, nextState) {
     if (!optionsDiv) return;
     optionsDiv.innerHTML = '';
+    // Render regular options first
     options.forEach(option => {
         const button = document.createElement('button');
         button.textContent = option;
@@ -52,34 +53,33 @@ function renderOptions(options, nextState) {
         button.addEventListener('click', () => {
             addMessage(option, 'user');
             fetchChatResponse(nextState, option);
-            optionsDiv.remove();
-            optionsDiv = null;
+            if (optionsDiv) {
+                optionsDiv.remove();
+                optionsDiv = null;
+            }
             allOptions = [];
-            document.getElementById('userInput').value = ''; // Clear input
+            document.getElementById('userInput').value = '';
         });
         optionsDiv.appendChild(button);
     });
-    // Add Back button for question_selected state
-    if (nextState === 'question_selected') {
-        const backButton = document.createElement('button');
-        backButton.textContent = 'Back';
-        backButton.classList.add('option-btn', 'back-btn');
-        backButton.addEventListener('click', handleBack);
-        optionsDiv.appendChild(backButton);
-    }
-}
-
-// Function to handle back button
-function handleBack() {
-    if (currentState !== 'question_selected') return; // Prevent back button misuse
-    addMessage('Back', 'user');
-    fetchChatResponse('question_selected', 'BACK');
-    if (optionsDiv) {
-        optionsDiv.remove();
-        optionsDiv = null;
-        allOptions = [];
-    }
-    document.getElementById('userInput').value = '';
+    // Render back options last (e.g., "Back", "Main page")
+    backOptions.forEach(option => {
+        const button = document.createElement('button');
+        // Display "Back" for any "Back to ..." option, keep "Main page" as-is
+        button.textContent = option.startsWith('Back to') ? 'Back' : option;
+        button.classList.add('back-btn'); // Only add back-btn class
+        button.addEventListener('click', () => {
+            addMessage(option, 'user'); // Send original option (e.g., "Back to courses") to backend
+            fetchChatResponse(nextState, option);
+            if (optionsDiv) {
+                optionsDiv.remove();
+                optionsDiv = null;
+            }
+            allOptions = [];
+            document.getElementById('userInput').value = '';
+        });
+        optionsDiv.appendChild(button);
+    });
 }
 
 // Function to filter options based on input
@@ -88,13 +88,13 @@ function filterOptions(input) {
     const filteredOptions = allOptions.filter(option => 
         option.toLowerCase().includes(input.toLowerCase())
     );
-    renderOptions(filteredOptions.length > 0 ? filteredOptions : allOptions, currentState);
+    const regularOptions = filteredOptions.filter(opt => !opt.startsWith('Back to') && opt !== 'Main page');
+    const backOptions = filteredOptions.filter(opt => opt.startsWith('Back to') || opt === 'Main page');
+    renderOptions(regularOptions, backOptions, currentState);
 }
 
 // Function to fetch chat responses from the server
 function fetchChatResponse(state, input) {
-    console.log(`Fetching response - State: ${state}, Input: ${input}`);
-    // Ensure input is a string to avoid validation errors
     const payload = {
         state,
         input: input || '',
@@ -112,12 +112,10 @@ function fetchChatResponse(state, input) {
         return response.json();
     })
     .then(data => {
-        console.log('Server response:', data);
         addMessage(data.response, 'bot');
         currentState = data.next_state;
-        if (data.options && data.options.length > 0) {
-            displayOptions(data.options, data.next_state);
-        }
+        // Always display options and back options, even if options is empty
+        displayOptions(data.options || [], data.next_state, data.back_options || []);
     })
     .catch(error => {
         console.error('Fetch error:', error);
@@ -225,7 +223,6 @@ function verifyOTP() {
 
 // Function to reset and refresh the chat
 function refreshChat() {
-    console.log('Refreshing chat...');
     const messagesContainer = document.getElementById('messagesContainer');
     const userInput = document.getElementById('userInput');
     if (messagesContainer) {
@@ -260,7 +257,6 @@ document.addEventListener('DOMContentLoaded', function() {
     const chatbotBtn = document.getElementById('chatbotBtn');
     if (chatbotBtn) {
         chatbotBtn.onclick = toggleChat;
-        console.log('Chatbot button event listener attached');
     } else {
         console.error('Chatbot button not found in DOM');
     }
@@ -268,7 +264,6 @@ document.addEventListener('DOMContentLoaded', function() {
     const closeBtn = document.getElementById('closeChat');
     if (closeBtn) {
         closeBtn.onclick = toggleChat;
-        console.log('Close button event listener attached');
     } else {
         console.error('Close button not found in DOM');
     }
@@ -276,7 +271,6 @@ document.addEventListener('DOMContentLoaded', function() {
     const refreshButton = document.getElementById('refreshChat');
     if (refreshButton) {
         refreshButton.onclick = refreshChat;
-        console.log('Refresh button event listener attached');
     } else {
         console.error('Refresh button not found in DOM');
     }
@@ -284,7 +278,6 @@ document.addEventListener('DOMContentLoaded', function() {
     const startChatBtn = document.getElementById('startChatBtn');
     if (startChatBtn) {
         startChatBtn.onclick = handleRegistration;
-        console.log('Start chat button event listener attached');
     } else {
         console.error('Start chat button not found in DOM');
     }
@@ -294,7 +287,6 @@ document.addEventListener('DOMContentLoaded', function() {
         userInput.addEventListener('input', () => {
             filterOptions(userInput.value);
         });
-        console.log('User input event listener attached');
     } else {
         console.error('User input not found in DOM');
     }

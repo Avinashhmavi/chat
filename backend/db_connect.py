@@ -320,7 +320,7 @@ class DB3:
                             valid_exams = True
                         if not valid_exams:
                             return f"No scholarship exams available for {context.get('course')} in {context.get('city')}."
-                        return f"<pre>{answer.strip()}</pre>"
+                        return f"<div class='scholarship-details'>{answer.strip()}</div>"
                     elif source_detail == 'exam_info':
                         query = f"SELECT {source_detail} FROM exam_info WHERE course = %s"
                         result = await db1.query(query, (context.get('course'),))
