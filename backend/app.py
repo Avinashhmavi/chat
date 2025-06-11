@@ -323,8 +323,15 @@ async def chat(data: ChatRequest):
         elif state == "question_selected":
             selected_question = user_input
             context = chatbot.get_context(user_id)
-            question_dict = await call_db_api("/api/questions_dict", params={"category_id": context.get("category_id")})
-            if selected_question.upper() == "BACK":
+            if selected_question == "Back to categories":
+                category_options = await call_db_api("/api/categories")
+                return {
+                    "response": "How can I assist you further?",
+                    "options": category_options,
+                    "next_state": "category_selected",
+                    "back_options": ["Back to variants", "Main page"]
+                }
+            elif selected_question.upper() == "BACK":
                 category_options = await call_db_api("/api/categories")
                 return {
                     "response": "How can I assist you further?",
@@ -341,6 +348,7 @@ async def chat(data: ChatRequest):
                     "next_state": "course_selected",
                     "back_options": ["Back to cities"]
                 }
+            question_dict = await call_db_api("/api/questions_dict", params={"category_id": context.get("category_id")})
             question_id = question_dict.get(selected_question)
             if not question_id:
                 questions = await call_db_api("/api/questions", params={"category_id": context.get("category_id")})
@@ -405,7 +413,7 @@ async def chat(data: ChatRequest):
                     "next_state": "question_selected",
                     "back_options": ["Back to categories", "Main page"]
                 }            
-                
+                        
             if question_id == 22:
                 course_content = await db1.get_course_content(context.get("course_id"), context.get("course"))
                 if not course_content:
@@ -425,7 +433,7 @@ async def chat(data: ChatRequest):
                     "next_state": "result_selected",
                     "back_options": ["Back to questions", "Main page"]
                 }
-                
+   
             elif question_id == 1:
                 try:
                     price_data = await call_db_api("/api/course_price", params={"variant": context.get("training_type", "")})
