@@ -506,3 +506,7 @@
     background-color: #4e46b5; /* Light blue for odd items */
     color:#D9D8EF;
 }
+
+.d-none {
+    display: none !important;
+}

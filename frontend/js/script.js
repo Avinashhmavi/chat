@@ -209,6 +209,7 @@ function verifyOTP() {
                 registrationForm.classList.add('d-none');
                 chatbotBody.classList.remove('d-none');
             }
+            document.getElementById('chatInputContainer').classList.remove('d-none');
             addMessage("Hello! I'm your T.I.M.E. assistant. Let's get started.", 'bot');
             fetchChatResponse('start', '');
         } else {
