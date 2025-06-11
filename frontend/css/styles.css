@@ -198,6 +198,7 @@
 
 .bot-message {
     background-color: #e4e3f5;
+    white-space: pre-wrap;
     color: #212529;
     margin-right: auto;
     border-bottom-left-radius: 0px;
@@ -262,10 +263,7 @@
 
 .prompt-item{
    padding: 10px 15px;
-    background: #e9ecef;
     border-radius: 6px;
-    margin-bottom: 10px;
-    border: 1px solid #dee2e7;
 }
 
 /* Scholarship Details */
@@ -276,7 +274,6 @@
     line-height: 1.4;
     color: #212529;
     background-color: #e4e3f5;
-    padding: 8px 12px;
     border-radius: 15px;
 }
 
@@ -508,4 +505,8 @@
 
 .d-none {
     display: none !important;
+}
+
+p {
+    margin-bottom: 0px;
 }

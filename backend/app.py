@@ -489,13 +489,14 @@ async def chat(data: ChatRequest):
                 <div class="prompt-item">
                     <iframe width="100%" height="180" src="https://{video_url}" title="Testimonial Video" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen=""></iframe>
                 </div>
+                <p>Would you like to watch another video?</p>
                 """
                 context["testimonials"] = testimonials
                 context["viewed_testimonials"] = [video_url]
                 chatbot.set_context(user_id, context)
                 return {
                     "response": html_response,
-                    "options": ["Yes", "No"],
+                    "options": ["Yes"],
                     "next_state": "testimonial_response",
                     "back_options": ["Back to questions", "Main page"]
                 }
@@ -621,25 +622,34 @@ async def chat(data: ChatRequest):
                     context["viewed_testimonials"] = viewed_testimonials
                     chatbot.set_context(user_id, context)
                     return {
-                        "response": html_response,
-                        "options": ["Yes", "No"],
+                        "response": html_response + "<p>Would you like to watch another video?</p>",
+                        "options": ["Yes"],
                         "next_state": "testimonial_response",
                         "back_options": ["Back to questions", "Main page"]
                     }
                 else:
+                    html_response = """
+                    <div class="prompt-item">
+                        <a href="https://www.time4education.com" class="prompt-link" target="_blank">
+                            <i class="fas fa-link"></i> Time4Education Website
+                        </a>
+                        <p>You can watch other videos on our website</p>
+                    </div>
+                    """
                     questions = await call_db_api("/api/questions", params={"category_id": context.get("category_id")})
                     return {
-                        "response": "No more testimonial videos available.",
+                        "response": html_response,
                         "options": questions,
                         "next_state": "question_selected",
                         "back_options": ["Back to categories", "Main page"]
                     }
+            # Handle invalid input or initial state after showing a video
             questions = await call_db_api("/api/questions", params={"category_id": context.get("category_id")})
             return {
-                "response": "",
-                "options": questions,
-                "next_state": "question_selected",
-                "back_options": ["Back to categories", "Main page"]
+                "response": "Would you like to watch another video?",
+                "options": ["Yes"],
+                "next_state": "testimonial_response",
+                "back_options": ["Back to questions", "Main page"]
             }
 
         return {

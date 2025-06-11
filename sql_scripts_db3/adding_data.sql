@@ -56,7 +56,7 @@ INSERT INTO questions (category_id, question_text, display_order, source_type, s
     (6, 'Center amenities (Wi-Fi etc.)?', 5, 'STATIC', NULL),
     -- App / Online Portal
     (7, 'Do you have an app or portal / WhatsApp / Telegram support?', 1, 'STATIC', NULL),
-    (7, 'What are its features?', 2, 'DB', 'tbd_app_features'),
+    (7, 'What are its features?', 2, 'STATIC', NULL),
     (7, 'Access to live & recorded sessions?', 3, 'STATIC', NULL),
     -- Exam & Other Info
     (8, 'What are the eligibility criteria?', 1, 'DB', 'exam_info'),
@@ -67,6 +67,8 @@ INSERT INTO questions (category_id, question_text, display_order, source_type, s
     (8, 'Advantages of MBA?', 6, 'DB', 'exam_info'),
     (8, 'B-school selection process?', 7, 'DB', 'exam_info'),
     (8, 'How many attempts are allowed?', 8, 'DB', 'exam_info');
+
+DELETE FROM questions WHERE question_text = 'What’s the batch size?';
 
 -- Insert static answers
 INSERT INTO static_answers (question_id, answer_text) VALUES
@@ -84,7 +86,20 @@ INSERT INTO static_answers (question_id, answer_text) VALUES
     ((SELECT id FROM questions WHERE question_text = 'Accommodation/hostel tie-ups?'), 'No, we dont have hostel facility or we have tie-up with Hostels'),
     ((SELECT id FROM questions WHERE question_text = 'Center amenities (Wi-Fi etc.)?'), 'Wi-Fi or internet facility is not available'),
     ((SELECT id FROM questions WHERE question_text = 'Do you have an app or portal / WhatsApp / Telegram support?'), 'Yes we have telegram channel support: TIME4CAT\nTIME4CAT is our app and www.time4education.com is our website'),
-    ((SELECT id FROM questions WHERE question_text = 'Access to live & recorded sessions?'), 'Yes');
+    ((SELECT id FROM questions WHERE question_text = 'Access to live & recorded sessions?'), 'Yes'),
+	((SELECT id FROM questions WHERE question_text = 'What are its features?'), "• Login Activity Insights: Tracks last login, alerts students on pending tests/videos, helps mentors identify inactive learners.
+• Smart Resume: Resumes videos/tests from last activity across devices.
+• Photo-Based Identity Verification: Captures student photo at first login; supports exam proctoring.
+• Intelligent Attendance Monitoring: Geofenced & event-based attendance tracking (live, recorded, classroom).
+• Mentorship Engine: Auto-reminders for missed classes, personalized content suggestions.
+• Performance Analytics: Sub-topic level analysis, intelligent recommendations, leaderboard rankings.
+• Smart Action Plans: Auto-generated revision plans based on weak areas.
+Bookmarking & Quick Contact: Tag PDFs/videos, add comments, raise doubts via chatbot or faculty.
+• Free SHP Access: Limited dashboard access with targeted upgrade prompts.
+• Secure Payments: In-app payment gateway (UPI, cards, wallets).
+• Referral Program: Discounts for both referrers and new users.
+• AI Learning Tools: Video summarization, transcript-based tests, daily vocab tests.
+• Unified Platform: Single app for all courses (Android/iOS); no-code admin panel for content & ops.");
 
 -- Insert URL answers
 INSERT INTO url_answers (question_id, subcourse, variant, url, answer_text) VALUES
