@@ -425,6 +425,45 @@ async def chat(data: ChatRequest):
                     "next_state": "result_selected",
                     "back_options": ["Back to questions", "Main page"]
                 }
+                
+            elif question_id == 1:
+                try:
+                    price_data = await call_db_api("/api/course_price", params={"variant": context.get("training_type", "")})
+                    questions = await call_db_api("/api/questions", params={"category_id": context.get("category_id")})
+                    price = price_data.get("Price")
+                    offer_price = price_data.get("OfferPrice")
+                    if price is not None and price.strip():
+                        html_response = f"<div class='scholarship-details'><p>Fees details for {context.get('training_type', '')}:</p>"
+                        html_response += f"<p>Price: ₹{price}</p>"
+                        if offer_price is not None and offer_price.strip():
+                            html_response += f"<p>Offer Price: ₹{offer_price}</p>"
+                        html_response += "</div>"
+                        await db3.log_query(user_id, context.get("course"), context.get("subcourse"), context.get("training_type"), context.get("category_id", ""), question_id, html_response)
+                        return {
+                            "response": html_response,
+                            "options": questions,
+                            "next_state": "question_selected",
+                            "back_options": ["Back to categories", "Main page"]
+                        }
+                    else:
+                        html_response = "<div class='scholarship-details'><p>Price information is not available for this course.</p></div>"
+                        questions = await call_db_api("/api/questions", params={"category_id": context.get("category_id")})
+                        return {
+                            "response": html_response,
+                            "options": questions,
+                            "next_state": "question_selected",
+                            "back_options": ["Back to categories", "Main page"]
+                        }
+                except Exception as e:
+                    logger.error(f"Error fetching price for variant {context.get('training_type', '')}: {e}")
+                    html_response = "<div class='scholarship-details'><p>Price information is not available for this course.</p></div>"
+                    questions = await call_db_api("/api/questions", params={"category_id": context.get("category_id")})
+                    return {
+                        "response": html_response,
+                        "options": questions,
+                        "next_state": "question_selected",
+                        "back_options": ["Back to categories", "Main page"]
+                    }
 
             elif question_id == 23:
                 testimonials = await db1.get_testimonials(context.get("city"), context.get("course"))

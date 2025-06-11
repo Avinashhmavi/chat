@@ -159,9 +159,12 @@ async def get_course_variants(course_id: int, subcourse: str):
 async def get_course_price(variant: str):
     try:
         logger.debug(f"Fetching price for variant: {variant}")
-        result = await db1.get_course_price(variant)
-        if result:
-            return {"success": True, "data": {"Price": result['Price'], "OfferPrice": result['OfferPrice']}}
+        query = "SELECT Price, OfferPrice FROM coursedetails WHERE Coursesubvariant LIKE %s"
+        result = await db1.query(query, (f"%{variant}%",))
+        logger.debug(f"Query result for variant {variant}: {result}")
+        if result and len(result) > 0:
+            return {"success": True, "data": {"Price": result[0]['Price'], "OfferPrice": result[0]['OfferPrice']}}
+        logger.warning(f"No price found for variant: {variant}")
         return {"success": False, "error": "No price found for this variant"}
     except Exception as e:
         logger.error(f"Error fetching price for variant {variant}: {e}")
