@@ -422,16 +422,24 @@ async def chat(data: ChatRequest):
                         "response": "No results found for this course.",
                         "options": questions,
                         "next_state": "question_selected",
-                        "back_options": ["Back to categories", "Main page"]
+                        "back_options": ["Back to categories", "Main page"]  # Keeping your new feature
                     }
-                options = [item['Subtitle'] for item in course_content]
-                context["course_content"] = course_content
+                # Deduplicate and clean subtitles
+                seen_subtitles = set()
+                unique_content = []
+                for item in course_content:
+                    subtitle = item['Subtitle'].strip()
+                    if subtitle not in seen_subtitles:
+                        seen_subtitles.add(subtitle)
+                        unique_content.append(item)
+                options = [item['Subtitle'] for item in unique_content]
+                context["course_content"] = unique_content
                 chatbot.set_context(user_id, context)
                 return {
                     "response": "Please select a result to view:",
                     "options": options,
                     "next_state": "result_selected",
-                    "back_options": ["Back to questions", "Main page"]
+                    "back_options": ["Back to questions", "Main page"]  # Keeping your new feature
                 }
    
             elif question_id == 1:
@@ -557,19 +565,15 @@ async def chat(data: ChatRequest):
                     "back_options": ["Back to cities"]
                 }
             context = chatbot.get_context(user_id)
-            selected_subtitle = user_input
+            selected_subtitle = user_input.strip()
             course_content = context.get("course_content", [])
             bschool_content = context.get("bschool_content", [])
             content = course_content + bschool_content
-            selected_item = next((item for item in content if item["Subtitle"] == selected_subtitle), None)
+            selected_item = next((item for item in content if item["Subtitle"].strip() == selected_subtitle), None)
             if selected_item:
-                html_response = f"""
-                <div class="prompt-item">
-                    <a href="https://www.time4education.com{selected_item['Link']}" class="prompt-link" target="_blank">
-                        <i class="fas fa-link"></i> {selected_item['Subtitle']}
-                    </a>
-                </div>
-                """
+                clean_subtitle = selected_item['Subtitle'].strip()
+                html_response = f'<div class="prompt-item"><a href="https://www.time4education.com{selected_item["Link"]}" class="prompt-link" target="_blank"><i class="fas fa-link"></i> {clean_subtitle}</a></div>'
+                logger.debug(f"Result selected response: {html_response}")
                 questions = await call_db_api("/api/questions", params={"category_id": context.get("category_id")})
                 return {
                     "response": html_response,
@@ -580,7 +584,7 @@ async def chat(data: ChatRequest):
             else:
                 questions = await call_db_api("/api/questions", params={"category_id": context.get("category_id")})
                 return {
-                    "response": "Invalid selection. Please select a different question.",
+                    "response": "Invalid selection. Please choose a valid option.",
                     "options": questions,
                     "next_state": "question_selected",
                     "back_options": ["Back to categories", "Main page"]
