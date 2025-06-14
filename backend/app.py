@@ -1,8 +1,8 @@
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-from config import MYSQL_CREDENTIALS, MSSQL_CREDENTIALS, DB3_CREDENTIALS
-from db_connect import MySQLDB, MSSQLDB, DB3
+from config import MYSQL_CREDENTIALS, MSSQL_CREDENTIALS
+from db_connect import MySQLDB, MSSQLDB
 from chatbot_engine import ChatbotEngine
 import httpx
 import logging
@@ -25,9 +25,8 @@ app.add_middleware(
 
 db1 = MySQLDB(MYSQL_CREDENTIALS)
 db2 = MSSQLDB(MSSQL_CREDENTIALS)
-db3 = DB3(DB3_CREDENTIALS)
 
-chatbot = ChatbotEngine(db1, db2, db3)
+chatbot = ChatbotEngine(db1, db2)
 
 DB_API_URL = "http://localhost:8001"
 
@@ -65,12 +64,10 @@ async def call_db_api(endpoint, params=None, retries=3, backoff=1):
 @app.on_event("startup")
 async def startup_event():
     await db1.init_pool()
-    await db3.init_pool()
 
 @app.on_event("shutdown")
 async def shutdown_event():
     await db1.close()
-    await db3.close()
     db2.close()
 
 @app.post("/register")
@@ -361,14 +358,14 @@ async def chat(data: ChatRequest):
 
             if context.get("category_id") == 8:
                 question_columns = {
-                    39: "eligibility_criteria",
-                    40: "exam_dates",
-                    41: "registration_process",
-                    42: "score_validity",
-                    43: "top_b_schools",
-                    44: "mba_advantages",
-                    45: "selection_process",
-                    46: "attempts_allowed"
+                    38: "eligibility_criteria",
+                    39: "exam_dates",
+                    40: "registration_process",
+                    41: "score_validity",
+                    42: "top_b_schools",
+                    43: "mba_advantages",
+                    44: "selection_process",
+                    45: "attempts_allowed"
                 }
                 column = question_columns.get(question_id)
                 if column:
@@ -380,12 +377,12 @@ async def chat(data: ChatRequest):
                     """
                     course_param = f"%{context.get('course', '')}%"
                     try:
-                        async with db3.get_cursor() as cursor:
+                        async with db1.get_cursor() as cursor:
                             await cursor.execute(query, (course_param,))
                             result = await cursor.fetchone()
                             if result and result.get(column):
                                 answer = result.get(column)
-                                await db3.log_query(
+                                await db1.log_query(
                                     user_id,
                                     context.get("course"),
                                     context.get("subcourse"),
@@ -414,7 +411,7 @@ async def chat(data: ChatRequest):
                     "back_options": ["Back to categories", "Main page"]
                 }            
                         
-            if question_id == 22:
+            if question_id == 21:
                 course_content = await db1.get_course_content(context.get("course_id"), context.get("course"))
                 if not course_content:
                     questions = await call_db_api("/api/questions", params={"category_id": context.get("category_id")})
@@ -422,7 +419,7 @@ async def chat(data: ChatRequest):
                         "response": "No results found for this course.",
                         "options": questions,
                         "next_state": "question_selected",
-                        "back_options": ["Back to categories", "Main page"]  # Keeping your new feature
+                        "back_options": ["Back to categories", "Main page"]
                     }
                 # Deduplicate and clean subtitles
                 seen_subtitles = set()
@@ -439,7 +436,7 @@ async def chat(data: ChatRequest):
                     "response": "Please select a result to view:",
                     "options": options,
                     "next_state": "result_selected",
-                    "back_options": ["Back to questions", "Main page"]  # Keeping your new feature
+                    "back_options": ["Back to questions", "Main page"]
                 }
    
             elif question_id == 1:
@@ -454,7 +451,7 @@ async def chat(data: ChatRequest):
                         if offer_price is not None and offer_price.strip():
                             html_response += f"<p>Offer Price: ₹{offer_price}</p>"
                         html_response += "</div>"
-                        await db3.log_query(user_id, context.get("course"), context.get("subcourse"), context.get("training_type"), context.get("category_id", ""), question_id, html_response)
+                        await db1.log_query(user_id, context.get("course"), context.get("subcourse"), context.get("training_type"), context.get("category_id", ""), question_id, html_response)
                         return {
                             "response": html_response,
                             "options": questions,
@@ -481,7 +478,7 @@ async def chat(data: ChatRequest):
                         "back_options": ["Back to categories", "Main page"]
                     }
 
-            elif question_id == 23:
+            elif question_id == 22:
                 testimonials = await db1.get_testimonials(context.get("city"), context.get("course"))
                 if not testimonials:
                     questions = await call_db_api("/api/questions", params={"category_id": context.get("category_id")})
@@ -491,7 +488,12 @@ async def chat(data: ChatRequest):
                         "next_state": "question_selected",
                         "back_options": ["Back to categories", "Main page"]
                     }
-                random_testimonial = random.choice(testimonials)
+                # Clean video URLs by stripping whitespace
+                cleaned_testimonials = []
+                for t in testimonials:
+                    cleaned_url = t['video_url'].strip()
+                    cleaned_testimonials.append({'video_url': cleaned_url})
+                random_testimonial = random.choice(cleaned_testimonials)
                 video_url = random_testimonial['video_url']
                 html_response = f"""
                 <div class="prompt-item">
@@ -499,7 +501,7 @@ async def chat(data: ChatRequest):
                 </div>
                 <p>Would you like to watch another video?</p>
                 """
-                context["testimonials"] = testimonials
+                context["testimonials"] = cleaned_testimonials
                 context["viewed_testimonials"] = [video_url]
                 chatbot.set_context(user_id, context)
                 return {
@@ -509,7 +511,7 @@ async def chat(data: ChatRequest):
                     "back_options": ["Back to questions", "Main page"]
                 }
 
-            elif question_id == 26:
+            elif question_id == 25:
                 bschool_content = await db1.get_bschool_selection(context.get("course_id"))
                 if not bschool_content:
                     questions = await call_db_api("/api/questions", params={"category_id": context.get("category_id")})
@@ -536,7 +538,7 @@ async def chat(data: ChatRequest):
                 "training_type": context.get("training_type", ""),
                 "city": context.get("city", "")
             })
-            await db3.log_query(user_id, context.get("course"), context.get("subcourse"), context.get("training_type"), context.get("category_id"), question_id, answer)
+            await db1.log_query(user_id, context.get("course"), context.get("subcourse"), context.get("training_type"), context.get("category_id"), question_id, answer)
             questions = await call_db_api("/api/questions", params={"category_id": context.get("category_id")})
             return {
                 "response": answer,
@@ -613,10 +615,11 @@ async def chat(data: ChatRequest):
             if user_input.lower() == "yes":
                 testimonials = context.get("testimonials", [])
                 viewed_testimonials = context.get("viewed_testimonials", [])
-                unseen_testimonials = [t for t in testimonials if t['video_url'] not in viewed_testimonials]
+                # Strip whitespace when comparing video URLs
+                unseen_testimonials = [t for t in testimonials if t['video_url'].strip() not in [v.strip() for v in viewed_testimonials]]
                 if unseen_testimonials:
                     random_testimonial = random.choice(unseen_testimonials)
-                    video_url = random_testimonial['video_url']
+                    video_url = random_testimonial['video_url'].strip()
                     html_response = f"""
                     <div class="prompt-item">
                         <iframe width="100%" height="180" src="https://{video_url}" title="Testimonial Video" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen=""></iframe>
@@ -632,14 +635,7 @@ async def chat(data: ChatRequest):
                         "back_options": ["Back to questions", "Main page"]
                     }
                 else:
-                    html_response = """
-                    <div class="prompt-item">
-                        <a href="https://www.time4education.com" class="prompt-link" target="_blank">
-                            <i class="fas fa-link"></i> Time4Education Website
-                        </a>
-                        <p>You can watch other videos on our website</p>
-                    </div>
-                    """
+                    html_response = '<div class="prompt-item"><a href="https://www.time4education.com" class="prompt-link" target="_blank"><i class="fas fa-link"></i>Time4Education Website</a><p>You can watch other videos on our website</p></div>'.strip()
                     questions = await call_db_api("/api/questions", params={"category_id": context.get("category_id")})
                     return {
                         "response": html_response,
@@ -655,12 +651,6 @@ async def chat(data: ChatRequest):
                 "next_state": "testimonial_response",
                 "back_options": ["Back to questions", "Main page"]
             }
-
-        return {
-            "response": "Something went wrong. Let’s start over.",
-            "options": ["Restart"],
-            "next_state": "start"
-        }
 
     except Exception as e:
         logger.error(f"Error in chat endpoint, state={state}, input={user_input}, user_id={user_id}: {str(e)}")

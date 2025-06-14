@@ -20,20 +20,6 @@ async def test_db1():
     except Exception as e:
         print(f"DB1 connection failed: {e}")
 
-# Test DB3 (Local MySQL)
-async def test_db3():
-    try:
-        conn = await aiomysql.connect(
-            host=os.getenv('DB3_HOST'),
-            user=os.getenv('DB3_USER'),
-            password=os.getenv('DB3_PASSWORD'),
-            db=os.getenv('DB3_DATABASE')
-        )
-        conn.close()
-        print("DB3 connected")
-    except Exception as e:
-        print(f"DB3 connection failed: {e}")
-
 # Test DB2 (MSSQL)
 import pyodbc
 
@@ -54,7 +40,6 @@ def test_db2():
 # Run async tests
 async def main():
     await test_db1()
-    await test_db3()
     test_db2()
 
 if __name__ == "__main__":

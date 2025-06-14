@@ -1,6 +1,6 @@
 from fastapi import FastAPI, HTTPException
-from config import MYSQL_CREDENTIALS, MSSQL_CREDENTIALS, DB3_CREDENTIALS
-from db_connect import MySQLDB, MSSQLDB, DB3
+from config import MYSQL_CREDENTIALS, MSSQL_CREDENTIALS
+from db_connect import MySQLDB, MSSQLDB
 import logging
 import asyncio
 
@@ -11,17 +11,14 @@ logger = logging.getLogger(__name__)
 
 db1 = MySQLDB(MYSQL_CREDENTIALS)
 db2 = MSSQLDB(MSSQL_CREDENTIALS)
-db3 = DB3(DB3_CREDENTIALS)
 
 @app.on_event("startup")
 async def startup_event():
     await db1.init_pool()
-    await db3.init_pool()
 
 @app.on_event("shutdown")
 async def shutdown_event():
     await db1.close()
-    await db3.close()
     db2.close()
 
 @app.get("/api/cities")
@@ -184,7 +181,7 @@ async def get_scholarship_exams(course: str, city: str):
 async def get_subcourses(course: str):
     try:
         logger.debug(f"Fetching subcourses for course: {course}")
-        result = await db3.query_subcourses(course)
+        result = await db1.query_subcourses(course)
         subcourses = [row['subcourse'] for row in result]
         logger.debug(f"Subcourses: {subcourses}")
         return {"success": True, "data": subcourses}
@@ -196,7 +193,7 @@ async def get_subcourses(course: str):
 async def get_categories():
     try:
         logger.debug("Fetching categories")
-        result = await db3.get_categories()
+        result = await db1.get_categories()
         categories = [row['name'] for row in result]
         logger.debug(f"Categories: {categories}")
         return {"success": True, "data": categories}
@@ -208,7 +205,7 @@ async def get_categories():
 async def get_categories_dict():
     try:
         logger.debug("Fetching categories_dict")
-        result = await db3.get_categories()
+        result = await db1.get_categories()
         category_dict = {row['name']: row['id'] for row in result}
         logger.debug(f"Categories dict: {category_dict}")
         return {"success": True, "data": category_dict}
@@ -220,7 +217,7 @@ async def get_categories_dict():
 async def get_questions(category_id: int):
     try:
         logger.debug(f"Fetching questions for category_id: {category_id}")
-        result = await db3.get_questions(category_id)
+        result = await db1.get_questions(category_id)
         questions = [row['question_text'] for row in result]
         logger.debug(f"Questions: {questions}")
         return {"success": True, "data": questions}
@@ -232,7 +229,7 @@ async def get_questions(category_id: int):
 async def get_questions_dict(category_id: int):
     try:
         logger.debug(f"Fetching questions_dict for category_id: {category_id}")
-        result = await db3.get_questions(category_id)
+        result = await db1.get_questions(category_id)
         question_dict = {row['question_text']: row['id'] for row in result}
         logger.debug(f"Questions dict: {question_dict}")
         return {"success": True, "data": question_dict}
@@ -245,7 +242,7 @@ async def get_answer(question_id: int, course: str, subcourse: str, training_typ
     try:
         logger.debug(f"Fetching answer for question_id={question_id}, course={course}, subcourse={subcourse}, training_type={training_type}, city={city}")
         context = {"course": course, "subcourse": subcourse, "training_type": training_type, "city": city}
-        answer = await db3.get_answer(question_id, context, db1, db2)
+        answer = await db1.get_answer(question_id, context, db1, db2)
         logger.debug(f"Answer: {answer}")
         return {"success": True, "data": answer}
     except Exception as e:
