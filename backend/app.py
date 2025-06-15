@@ -209,7 +209,7 @@ async def chat(data: ChatRequest):
             subcourse_options = await call_db_api("/api/subcourses", params={"course": context.get("course", "")})
             if selected_subcourse not in subcourse_options.get("data", []):
                 return {
-                    "response": f"Invalid exam year. Please select a valid {context.get('course', '')} exam year.",
+                    "response": f"Invalid exam year. Please select a valid {context.get('city', '')} exam year.",
                     "options": subcourse_options.get("data", []),
                     "next_state": "subcourse_selected",
                     "back_options": ["Back to courses", "Main page"]
@@ -364,6 +364,26 @@ async def chat(data: ChatRequest):
                 questions = await call_db_api("/api/questions", params={"category_id": context.get("category_id")})
                 return {
                     "response": "Invalid question. Please select a valid question.",
+                    "options": questions.get("data", []),
+                    "next_state": "question_selected",
+                    "back_options": ["Back to categories", "Main page"]
+                }
+
+            if question_id == 30:
+                city = context.get("city", "").strip()
+                html_response = f'<div class="prompt-item"><a href="https://www.time4education.com/local/locationcms/location_directors.php?city={city}" class="prompt-link" target="_blank"><i class="fas fa-link"></i>All Center details for {city}</a></div>'
+                await db1.log_query(
+                    user_id,
+                    context.get("course"),
+                    context.get("subcourse"),
+                    context.get("training_type"),
+                    context.get("category_id"),
+                    question_id,
+                    html_response
+                )
+                questions = await call_db_api("/api/questions", params={"category_id": context.get("category_id")})
+                return {
+                    "response": html_response,
                     "options": questions.get("data", []),
                     "next_state": "question_selected",
                     "back_options": ["Back to categories", "Main page"]
