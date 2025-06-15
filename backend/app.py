@@ -54,7 +54,7 @@ async def call_db_api(endpoint, params=None, retries=3, backoff=1):
                 if not data.get("success"):
                     logger.error(f"API error at {url}: {data.get('error')}")
                     raise HTTPException(status_code=500, detail=data.get("error"))
-                return data["data"]
+                return data
             except httpx.RequestError as e:
                 logger.error(f"API call failed at {url}: {e}")
                 if attempt == retries - 1:
@@ -108,74 +108,87 @@ async def chat(data: ChatRequest):
         user_id = data.user_id
 
         if state == "start":
-            city_options = await call_db_api("/api/cities")
-            if not city_options:
-                logger.error("No cities found")
-                return {"response": "No cities available. Please contact support.", "options": [], "next_state": "start"}
             return {
-                "response": "Please select a city.",
-                "options": city_options,
+                "response": "Please enter your city.",
+                "options": [],
                 "next_state": "city_selected"
             }
 
         elif state == "city_selected":
-            selected_city = user_input
-            city_data = await call_db_api(f"/api/city_data/{selected_city}")
-            if not city_data["valid"]:
-                cities = city_data.get("cities", [])
+            selected_city = user_input.strip().encode('utf-8').decode('utf-8')
+            nearest_center_response = await call_db_api("/api/find_nearest_center", params={"city": selected_city})
+            nearest_center = nearest_center_response.get("data", {}).get("nearest_center", selected_city) if nearest_center_response.get("success") else selected_city
+            city_data = await call_db_api(f"/api/city_data/{nearest_center}")
+            if not city_data.get("data", {}).get("valid"):
+                # Map invalid city to Hyderabad
+                nearest_center = "Hyderabad"
+                city_data = await call_db_api(f"/api/city_data/{nearest_center}")
+                if not city_data.get("data", {}).get("valid"):
+                    logger.error(f"Hyderabad city data invalid: {city_data}")
+                    return {
+                        "response": "Sorry, something went wrong. Please try again later.",
+                        "options": [],
+                        "next_state": "start"
+                    }
+                chatbot.set_context(user_id, {"city": nearest_center})
+                if not city_data.get("data", {}).get("courses"):
+                    return {
+                        "response": f"No active courses available for {nearest_center}. Please try again later.",
+                        "options": [],
+                        "next_state": "start"
+                    }
                 return {
-                    "response": "Invalid city. Please select a valid city.",
-                    "options": cities,
-                    "next_state": "city_selected"
+                    "response": f"Sorry, we couldn't find your city. We've mapped you to our Hyderabad center. Which course are you looking for?",
+                    "options": [course["name"] for course in city_data.get("data", {}).get("courses", [])],
+                    "next_state": "course_selected",
+                    "back_options": ["Back to cities"]
                 }
-            chatbot.set_context(user_id, {"city": selected_city})
-            if not city_data["courses"]:
-                cities = city_data.get("cities", [])
+            chatbot.set_context(user_id, {"city": nearest_center})
+            if not city_data.get("data", {}).get("courses"):
                 return {
-                    "response": f"No active courses available for {selected_city}. Please select another city.",
-                    "options": cities,
+                    "response": f"No active courses available for {nearest_center}. Please enter another city.",
+                    "options": [],
                     "next_state": "city_selected"
                 }
             return {
-                "response": f"You selected: {selected_city}. Which course are you looking for?",
-                "options": [course["name"] for course in city_data["courses"]],
+                "response": f"You selected: {nearest_center}. Which course are you looking for?",
+                "options": [course["name"] for course in city_data.get("data", {}).get("courses", [])],
                 "next_state": "course_selected",
                 "back_options": ["Back to cities"]
             }
 
         elif state == "course_selected":
             if user_input == "Back to cities":
-                city_options = await call_db_api("/api/cities")
                 return {
-                    "response": "Please select a city.",
-                    "options": city_options,
+                    "response": "Please enter your city.",
+                    "options": [],
                     "next_state": "city_selected"
                 }
             selected_course = user_input
             context = chatbot.get_context(user_id)
             city_data = await call_db_api(f"/api/city_data/{context.get('city', '')}")
-            course_dict = {course["name"]: course["id"] for course in city_data.get("courses", [])}
+            course_dict = {course["name"]: course["id"] for course in city_data.get("data", {}).get("courses", [])}
             course_id = course_dict.get(selected_course)
             if not course_id:
                 return {
                     "response": "Invalid course. Please select a valid course.",
-                    "options": [course["name"] for course in city_data.get("courses", [])],
+                    "options": [course["name"] for course in city_data.get("data", {}).get("courses", [])],
                     "next_state": "course_selected",
                     "back_options": ["Back to cities"]
                 }
             chatbot.set_context(user_id, {"course": selected_course, "course_id": course_id})
             subcourse_options = await call_db_api("/api/subcourses", params={"course": selected_course})
-            if not subcourse_options:
+            if not subcourse_options.get("data"):
                 logger.error(f"No subcourses found for course: {selected_course}")
                 return {
                     "response": f"No exam years available for {selected_course}. Please select another course.",
-                    "options": [course["name"] for course in city_data.get("courses", [])],
+                    "options": [course["name"] for course in city_data.get("data", {}).get("courses", [])],
                     "next_state": "course_selected",
                     "back_options": ["Back to cities"]
                 }
             return {
                 "response": f"Which {selected_course} exam year are you looking for?",
-                "options": subcourse_options,
+                "options": subcourse_options.get("data", []),
                 "next_state": "subcourse_selected",
                 "back_options": ["Back to courses", "Main page"]
             }
@@ -186,7 +199,7 @@ async def chat(data: ChatRequest):
                 city_data = await call_db_api(f"/api/city_data/{context.get('city', '')}")
                 return {
                     "response": f"Which course are you looking for in {context.get('city', '')}?",
-                    "options": [course["name"] for course in city_data.get("courses", [])],
+                    "options": [course["name"] for course in city_data.get("data", {}).get("courses", [])],
                     "next_state": "course_selected",
                     "back_options": ["Back to cities"]
                 }
@@ -194,26 +207,26 @@ async def chat(data: ChatRequest):
             context = chatbot.get_context(user_id)
             course_id = context.get("course_id")
             subcourse_options = await call_db_api("/api/subcourses", params={"course": context.get("course", "")})
-            if selected_subcourse not in subcourse_options:
+            if selected_subcourse not in subcourse_options.get("data", []):
                 return {
                     "response": f"Invalid exam year. Please select a valid {context.get('course', '')} exam year.",
-                    "options": subcourse_options,
+                    "options": subcourse_options.get("data", []),
                     "next_state": "subcourse_selected",
                     "back_options": ["Back to courses", "Main page"]
                 }
             chatbot.set_context(user_id, {"subcourse": selected_subcourse})
             variant_options = await call_db_api("/api/course_variants", params={"course_id": course_id, "subcourse": selected_subcourse})
-            if not variant_options:
+            if not variant_options.get("data"):
                 logger.error(f"No course variants found for subcourse: {selected_subcourse}, course_id: {course_id}")
                 return {
                     "response": f"No variants available for {selected_subcourse}. Please select another exam year.",
-                    "options": subcourse_options,
+                    "options": subcourse_options.get("data", []),
                     "next_state": "subcourse_selected",
                     "back_options": ["Back to courses", "Main page"]
                 }
             return {
                 "response": "What course variant would you like?",
-                "options": variant_options,
+                "options": variant_options.get("data", []),
                 "next_state": "training_type_selected",
                 "back_options": ["Back to exam years", "Main page"]
             }
@@ -224,7 +237,7 @@ async def chat(data: ChatRequest):
                 subcourse_options = await call_db_api("/api/subcourses", params={"course": context.get("course", "")})
                 return {
                     "response": f"Which {context.get('course', '')} exam year are you looking for?",
-                    "options": subcourse_options,
+                    "options": subcourse_options.get("data", []),
                     "next_state": "subcourse_selected",
                     "back_options": ["Back to courses", "Main page"]
                 }
@@ -233,23 +246,23 @@ async def chat(data: ChatRequest):
                 city_data = await call_db_api(f"/api/city_data/{context.get('city', '')}")
                 return {
                     "response": f"Which course are you looking for in {context.get('city', '')}?",
-                    "options": [course["name"] for course in city_data.get("courses", [])],
+                    "options": [course["name"] for course in city_data.get("data", {}).get("courses", [])],
                     "next_state": "course_selected",
                     "back_options": ["Back to cities"]
                 }
             selected_variant = user_input
             context = chatbot.get_context(user_id)
             variant_options = await call_db_api("/api/course_variants", params={"course_id": context.get("course_id"), "subcourse": context.get("subcourse")})
-            if selected_variant not in variant_options:
+            if selected_variant not in variant_options.get("data", []):
                 return {
                     "response": f"Invalid variant. Please select a valid variant for {context.get('subcourse', '')}.",
-                    "options": variant_options,
+                    "options": variant_options.get("data", []),
                     "next_state": "training_type_selected",
                     "back_options": ["Back to exam years", "Main page"]
                 }
             chatbot.set_context(user_id, {"training_type": selected_variant})
             category_options = await call_db_api("/api/categories")
-            if not category_options:
+            if not category_options.get("data"):
                 logger.error("No categories found")
                 return {
                     "response": "No categories available. Let’s start over.",
@@ -258,7 +271,7 @@ async def chat(data: ChatRequest):
                 }
             return {
                 "response": "How can I assist you further?",
-                "options": category_options,
+                "options": category_options.get("data", []),
                 "next_state": "category_selected",
                 "back_options": ["Back to variants", "Main page"]
             }
@@ -269,7 +282,7 @@ async def chat(data: ChatRequest):
                 variant_options = await call_db_api("/api/course_variants", params={"course_id": context.get("course_id"), "subcourse": context.get("subcourse")})
                 return {
                     "response": "What course variant would you like?",
-                    "options": variant_options,
+                    "options": variant_options.get("data", []),
                     "next_state": "training_type_selected",
                     "back_options": ["Back to exam years", "Main page"]
                 }
@@ -278,7 +291,7 @@ async def chat(data: ChatRequest):
                 city_data = await call_db_api(f"/api/city_data/{context.get('city', '')}")
                 return {
                     "response": f"Which course are you looking for in {context.get('city', '')}?",
-                    "options": [course["name"] for course in city_data.get("courses", [])],
+                    "options": [course["name"] for course in city_data.get("data", {}).get("courses", [])],
                     "next_state": "course_selected",
                     "back_options": ["Back to cities"]
                 }
@@ -286,7 +299,7 @@ async def chat(data: ChatRequest):
                 category_options = await call_db_api("/api/categories")
                 return {
                     "response": "How can I assist you further?",
-                    "options": category_options,
+                    "options": category_options.get("data", []),
                     "next_state": "category_selected",
                     "back_options": ["Back to variants", "Main page"]
                 }
@@ -298,13 +311,13 @@ async def chat(data: ChatRequest):
                     "options": [],
                     "next_state": "start"
                 }
-            category_id = category_dict.get(selected_category)
+            category_id = category_dict.get("data", {}).get(selected_category)
             if not category_id:
                 logger.error(f"Invalid category selected: {selected_category}")
                 category_options = await call_db_api("/api/categories")
                 return {
                     "response": "Invalid category. How can I assist you further?",
-                    "options": category_options,
+                    "options": category_options.get("data", []),
                     "next_state": "category_selected",
                     "back_options": ["Back to variants", "Main page"]
                 }
@@ -312,7 +325,7 @@ async def chat(data: ChatRequest):
             chatbot.set_context(user_id, {"category_id": category_id})
             return {
                 "response": "Please select a question.",
-                "options": questions,
+                "options": questions.get("data", []),
                 "next_state": "question_selected",
                 "back_options": ["Back to categories", "Main page"]
             }
@@ -324,7 +337,7 @@ async def chat(data: ChatRequest):
                 category_options = await call_db_api("/api/categories")
                 return {
                     "response": "How can I assist you further?",
-                    "options": category_options,
+                    "options": category_options.get("data", []),
                     "next_state": "category_selected",
                     "back_options": ["Back to variants", "Main page"]
                 }
@@ -332,7 +345,7 @@ async def chat(data: ChatRequest):
                 category_options = await call_db_api("/api/categories")
                 return {
                     "response": "How can I assist you further?",
-                    "options": category_options,
+                    "options": category_options.get("data", []),
                     "next_state": "category_selected",
                     "back_options": ["Back to variants", "Main page"]
                 }
@@ -341,17 +354,17 @@ async def chat(data: ChatRequest):
                 city_data = await call_db_api(f"/api/city_data/{context.get('city', '')}")
                 return {
                     "response": f"Which course are you looking for in {context.get('city', '')}?",
-                    "options": [course["name"] for course in city_data.get("courses", [])],
+                    "options": [course["name"] for course in city_data.get("data", {}).get("courses", [])],
                     "next_state": "course_selected",
                     "back_options": ["Back to cities"]
                 }
             question_dict = await call_db_api("/api/questions_dict", params={"category_id": context.get("category_id")})
-            question_id = question_dict.get(selected_question)
+            question_id = question_dict.get("data", {}).get(selected_question)
             if not question_id:
                 questions = await call_db_api("/api/questions", params={"category_id": context.get("category_id")})
                 return {
                     "response": "Invalid question. Please select a valid question.",
-                    "options": questions,
+                    "options": questions.get("data", []),
                     "next_state": "question_selected",
                     "back_options": ["Back to categories", "Main page"]
                 }
@@ -394,7 +407,7 @@ async def chat(data: ChatRequest):
                                 questions = await call_db_api("/api/questions", params={"category_id": context.get("category_id")})
                                 return {
                                     "response": answer,
-                                    "options": questions,
+                                    "options": questions.get("data", []),
                                     "next_state": "question_selected",
                                     "back_options": ["Back to categories", "Main page"]
                                 }
@@ -406,7 +419,7 @@ async def chat(data: ChatRequest):
                 questions = await call_db_api("/api/questions", params={"category_id": context.get("category_id")})
                 return {
                     "response": "No information found for this question.",
-                    "options": questions,
+                    "options": questions.get("data", []),
                     "next_state": "question_selected",
                     "back_options": ["Back to categories", "Main page"]
                 }            
@@ -417,7 +430,7 @@ async def chat(data: ChatRequest):
                     questions = await call_db_api("/api/questions", params={"category_id": context.get("category_id")})
                     return {
                         "response": "No results found for this course.",
-                        "options": questions,
+                        "options": questions.get("data", []),
                         "next_state": "question_selected",
                         "back_options": ["Back to categories", "Main page"]
                     }
@@ -443,8 +456,8 @@ async def chat(data: ChatRequest):
                 try:
                     price_data = await call_db_api("/api/course_price", params={"variant": context.get("training_type", "")})
                     questions = await call_db_api("/api/questions", params={"category_id": context.get("category_id")})
-                    price = price_data.get("Price")
-                    offer_price = price_data.get("OfferPrice")
+                    price = price_data.get("data", {}).get("Price")
+                    offer_price = price_data.get("data", {}).get("OfferPrice")
                     if price is not None and price.strip():
                         html_response = f"<div class='scholarship-details'><p>Fees details for {context.get('training_type', '')}:</p>"
                         html_response += f"<p>Price: ₹{price}</p>"
@@ -454,7 +467,7 @@ async def chat(data: ChatRequest):
                         await db1.log_query(user_id, context.get("course"), context.get("subcourse"), context.get("training_type"), context.get("category_id", ""), question_id, html_response)
                         return {
                             "response": html_response,
-                            "options": questions,
+                            "options": questions.get("data", []),
                             "next_state": "question_selected",
                             "back_options": ["Back to categories", "Main page"]
                         }
@@ -463,7 +476,7 @@ async def chat(data: ChatRequest):
                         questions = await call_db_api("/api/questions", params={"category_id": context.get("category_id")})
                         return {
                             "response": html_response,
-                            "options": questions,
+                            "options": questions.get("data", []),
                             "next_state": "question_selected",
                             "back_options": ["Back to categories", "Main page"]
                         }
@@ -473,7 +486,7 @@ async def chat(data: ChatRequest):
                     questions = await call_db_api("/api/questions", params={"category_id": context.get("category_id")})
                     return {
                         "response": html_response,
-                        "options": questions,
+                        "options": questions.get("data", []),
                         "next_state": "question_selected",
                         "back_options": ["Back to categories", "Main page"]
                     }
@@ -484,7 +497,7 @@ async def chat(data: ChatRequest):
                     questions = await call_db_api("/api/questions", params={"category_id": context.get("category_id")})
                     return {
                         "response": "No testimonials found for this course.",
-                        "options": questions,
+                        "options": questions.get("data", []),
                         "next_state": "question_selected",
                         "back_options": ["Back to categories", "Main page"]
                     }
@@ -517,7 +530,7 @@ async def chat(data: ChatRequest):
                     questions = await call_db_api("/api/questions", params={"category_id": context.get("category_id")})
                     return {
                         "response": "No B-School Selection data found for this course.",
-                        "options": questions,
+                        "options": questions.get("data", []),
                         "next_state": "question_selected",
                         "back_options": ["Back to categories", "Main page"]
                     }
@@ -538,11 +551,11 @@ async def chat(data: ChatRequest):
                 "training_type": context.get("training_type", ""),
                 "city": context.get("city", "")
             })
-            await db1.log_query(user_id, context.get("course"), context.get("subcourse"), context.get("training_type"), context.get("category_id"), question_id, answer)
+            await db1.log_query(user_id, context.get("course"), context.get("subcourse"), context.get("training_type"), context.get("category_id"), question_id, answer.get("data", ""))
             questions = await call_db_api("/api/questions", params={"category_id": context.get("category_id")})
             return {
-                "response": answer,
-                "options": questions,
+                "response": answer.get("data", ""),
+                "options": questions.get("data", []),
                 "next_state": "question_selected",
                 "back_options": ["Back to categories", "Main page"]
             }
@@ -553,7 +566,7 @@ async def chat(data: ChatRequest):
                 questions = await call_db_api("/api/questions", params={"category_id": context.get("category_id")})
                 return {
                     "response": "Please select a question.",
-                    "options": questions,
+                    "options": questions.get("data", []),
                     "next_state": "question_selected",
                     "back_options": ["Back to categories", "Main page"]
                 }
@@ -562,7 +575,7 @@ async def chat(data: ChatRequest):
                 city_data = await call_db_api(f"/api/city_data/{context.get('city', '')}")
                 return {
                     "response": f"Which course are you looking for in {context.get('city', '')}?",
-                    "options": [course["name"] for course in city_data.get("courses", [])],
+                    "options": [course["name"] for course in city_data.get("data", {}).get("courses", [])],
                     "next_state": "course_selected",
                     "back_options": ["Back to cities"]
                 }
@@ -579,7 +592,7 @@ async def chat(data: ChatRequest):
                 questions = await call_db_api("/api/questions", params={"category_id": context.get("category_id")})
                 return {
                     "response": html_response,
-                    "options": questions,
+                    "options": questions.get("data", []),
                     "next_state": "question_selected",
                     "back_options": ["Back to categories", "Main page"]
                 }
@@ -587,7 +600,7 @@ async def chat(data: ChatRequest):
                 questions = await call_db_api("/api/questions", params={"category_id": context.get("category_id")})
                 return {
                     "response": "Invalid selection. Please choose a valid option.",
-                    "options": questions,
+                    "options": questions.get("data", []),
                     "next_state": "question_selected",
                     "back_options": ["Back to categories", "Main page"]
                 }
@@ -598,7 +611,7 @@ async def chat(data: ChatRequest):
                 questions = await call_db_api("/api/questions", params={"category_id": context.get("category_id")})
                 return {
                     "response": "Please select a question.",
-                    "options": questions,
+                    "options": questions.get("data", []),
                     "next_state": "question_selected",
                     "back_options": ["Back to categories", "Main page"]
                 }
@@ -607,7 +620,7 @@ async def chat(data: ChatRequest):
                 city_data = await call_db_api(f"/api/city_data/{context.get('city', '')}")
                 return {
                     "response": f"Which course are you looking for in {context.get('city', '')}?",
-                    "options": [course["name"] for course in city_data.get("courses", [])],
+                    "options": [course["name"] for course in city_data.get("data", {}).get("courses", [])],
                     "next_state": "course_selected",
                     "back_options": ["Back to cities"]
                 }
@@ -639,7 +652,7 @@ async def chat(data: ChatRequest):
                     questions = await call_db_api("/api/questions", params={"category_id": context.get("category_id")})
                     return {
                         "response": html_response,
-                        "options": questions,
+                        "options": questions.get("data", []),
                         "next_state": "question_selected",
                         "back_options": ["Back to categories", "Main page"]
                     }
@@ -658,7 +671,7 @@ async def chat(data: ChatRequest):
             category_options = await call_db_api("/api/categories")
             return {
                 "response": "Sorry, something went wrong. Let’s get back on track.",
-                "options": category_options,
+                "options": category_options.get("data", []),
                 "next_state": "category_selected",
                 "back_options": ["Back to variants", "Main page"]
             }

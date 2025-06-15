@@ -28,14 +28,25 @@ function displayOptions(options, nextState, backOptions = []) {
         console.error('Messages container or user input not found');
         return;
     }
-    allOptions = options.concat(backOptions); // Combine regular and back options
+    // Ensure options and backOptions are arrays
+    const safeOptions = Array.isArray(options) ? options : [];
+    const safeBackOptions = Array.isArray(backOptions) ? backOptions : [];
+    allOptions = safeOptions.concat(safeBackOptions); // Combine regular and back options
+    if (!allOptions.length) {
+        // No options to display; clear any existing optionsDiv
+        if (optionsDiv) {
+            optionsDiv.remove();
+            optionsDiv = null;
+        }
+        return;
+    }
     if (optionsDiv) {
         optionsDiv.remove(); // Remove previous optionsDiv if exists
         optionsDiv = null;
     }
     optionsDiv = document.createElement('div');
     optionsDiv.classList.add('prompts-inline');
-    renderOptions(options, backOptions, nextState);
+    renderOptions(safeOptions, safeBackOptions, nextState);
     messagesContainer.appendChild(optionsDiv);
     messagesContainer.scrollTop = messagesContainer.scrollHeight;
     userInput.value = ''; // Clear input on new options
@@ -114,7 +125,7 @@ function fetchChatResponse(state, input) {
     .then(data => {
         addMessage(data.response, 'bot');
         currentState = data.next_state;
-        // Always display options and back options, even if options is empty
+        // Ensure options and back_options are arrays
         displayOptions(data.options || [], data.next_state, data.back_options || []);
     })
     .catch(error => {
@@ -253,8 +264,27 @@ function toggleChat() {
     }
 }
 
+// Function to send user input to the backend
+function sendMessage() {
+    const userInput = document.getElementById('userInput');
+    if (!userInput) {
+        console.error('User input not found');
+        return;
+    }
+    const input = userInput.value.trim();
+    if (input) {
+        addMessage(input, 'user');
+        fetchChatResponse(currentState, input);
+        userInput.value = '';
+    }
+}
+
 // Initialize the chat when the DOM is loaded
 document.addEventListener('DOMContentLoaded', function() {
+    console.log('DOM fully loaded'); // Debug log
+    const sendButtonCheck = document.getElementById('sendButton');
+    console.log('Send button element:', sendButtonCheck); // Debug log
+
     const chatbotBtn = document.getElementById('chatbotBtn');
     if (chatbotBtn) {
         chatbotBtn.onclick = toggleChat;
@@ -288,7 +318,19 @@ document.addEventListener('DOMContentLoaded', function() {
         userInput.addEventListener('input', () => {
             filterOptions(userInput.value);
         });
+        userInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                sendMessage();
+            }
+        });
     } else {
         console.error('User input not found in DOM');
+    }
+
+    const sendButton = document.getElementById('sendButton');
+    if (sendButton) {
+        sendButton.addEventListener('click', sendMessage);
+    } else {
+        console.error('Send button not found in DOM');
     }
 });

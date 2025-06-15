@@ -32,6 +32,19 @@ async def get_cities():
         logger.error(f"Error fetching cities: {e}")
         return {"success": False, "error": "Failed to fetch cities"}
 
+@app.get("/api/find_nearest_center")
+async def find_nearest_center(city: str):
+    try:
+        query = "SELECT nearest_center FROM mdl_city_state_centerslist WHERE LOWER(city) = LOWER(%s)"
+        result = await db1.query(query, (city,))
+        if result:
+            return {"success": True, "nearest_center": result[0]['nearest_center']}
+        else:
+            return {"success": False, "error": "City not found"}
+    except Exception as e:
+        logger.error(f"Error finding nearest center for city {city}: {e}")
+        return {"success": False, "error": "Failed to find nearest center"}
+
 @app.get("/api/courses/{city}")
 async def get_courses(city: str):
     try:
