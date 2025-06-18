@@ -10,10 +10,3 @@ MYSQL_CREDENTIALS = {
     "password": os.getenv("MYSQL_PASSWORD"),
     "database": os.getenv("MYSQL_DATABASE")
 }
-
-MSSQL_CREDENTIALS = {
-    "server": os.getenv("MSSQL_SERVER"),
-    "database": os.getenv("MSSQL_DATABASE"),
-    "username": os.getenv("MSSQL_USERNAME"),
-    "password": os.getenv("MSSQL_PASSWORD")
-}

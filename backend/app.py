@@ -1,8 +1,8 @@
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-from config import MYSQL_CREDENTIALS, MSSQL_CREDENTIALS
-from db_connect import MySQLDB, MSSQLDB
+from config import MYSQL_CREDENTIALS
+from db_connect import MySQLDB
 from chatbot_engine import ChatbotEngine
 import httpx
 import logging
@@ -11,7 +11,6 @@ import random
 
 app = FastAPI()
 
-# Configure logging to only show INFO and ERROR levels
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
@@ -24,9 +23,8 @@ app.add_middleware(
 )
 
 db1 = MySQLDB(MYSQL_CREDENTIALS)
-db2 = MSSQLDB(MSSQL_CREDENTIALS)
 
-chatbot = ChatbotEngine(db1, db2)
+chatbot = ChatbotEngine(db1)
 
 DB_API_URL = "http://localhost:8001"
 
@@ -68,7 +66,6 @@ async def startup_event():
 @app.on_event("shutdown")
 async def shutdown_event():
     await db1.close()
-    db2.close()
 
 @app.post("/register")
 async def register(data: RegisterRequest):
@@ -120,7 +117,6 @@ async def chat(data: ChatRequest):
             nearest_center = nearest_center_response.get("data", {}).get("nearest_center", selected_city) if nearest_center_response.get("success") else selected_city
             city_data = await call_db_api(f"/api/city_data/{nearest_center}")
             if not city_data.get("data", {}).get("valid"):
-                # Map invalid city to Hyderabad
                 nearest_center = "Hyderabad"
                 city_data = await call_db_api(f"/api/city_data/{nearest_center}")
                 if not city_data.get("data", {}).get("valid"):
@@ -454,7 +450,6 @@ async def chat(data: ChatRequest):
                         "next_state": "question_selected",
                         "back_options": ["Back to categories", "Main page"]
                     }
-                # Deduplicate and clean subtitles
                 seen_subtitles = set()
                 unique_content = []
                 for item in course_content:
@@ -521,7 +516,6 @@ async def chat(data: ChatRequest):
                         "next_state": "question_selected",
                         "back_options": ["Back to categories", "Main page"]
                     }
-                # Clean video URLs by stripping whitespace
                 cleaned_testimonials = []
                 for t in testimonials:
                     cleaned_url = t['video_url'].strip()
@@ -648,7 +642,6 @@ async def chat(data: ChatRequest):
             if user_input.lower() == "yes":
                 testimonials = context.get("testimonials", [])
                 viewed_testimonials = context.get("viewed_testimonials", [])
-                # Strip whitespace when comparing video URLs
                 unseen_testimonials = [t for t in testimonials if t['video_url'].strip() not in [v.strip() for v in viewed_testimonials]]
                 if unseen_testimonials:
                     random_testimonial = random.choice(unseen_testimonials)
@@ -676,7 +669,6 @@ async def chat(data: ChatRequest):
                         "next_state": "question_selected",
                         "back_options": ["Back to categories", "Main page"]
                     }
-            # Handle invalid input or initial state after showing a video
             questions = await call_db_api("/api/questions", params={"category_id": context.get("category_id")})
             return {
                 "response": "Would you like to watch another video?",

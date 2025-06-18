@@ -1,6 +1,6 @@
 from fastapi import FastAPI, HTTPException
-from config import MYSQL_CREDENTIALS, MSSQL_CREDENTIALS
-from db_connect import MySQLDB, MSSQLDB
+from config import MYSQL_CREDENTIALS
+from db_connect import MySQLDB
 import logging
 import asyncio
 
@@ -10,7 +10,6 @@ logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
 
 db1 = MySQLDB(MYSQL_CREDENTIALS)
-db2 = MSSQLDB(MSSQL_CREDENTIALS)
 
 @app.on_event("startup")
 async def startup_event():
@@ -19,7 +18,6 @@ async def startup_event():
 @app.on_event("shutdown")
 async def shutdown_event():
     await db1.close()
-    db2.close()
 
 @app.get("/api/cities")
 async def get_cities():
@@ -138,18 +136,15 @@ async def get_city_data(city: str):
 async def get_course_variants(course_id: int, subcourse: str):
     try:
         logger.debug(f"Fetching course variants for course_id={course_id}, subcourse={subcourse}")
-        # Split subcourse into course and year (e.g., "CAT 2025" -> "CAT", "2025")
         try:
             course, year = subcourse.split(' ', 1)
             year_pattern = f"%{year}%"
             general_pattern = f"%{course} Classroom course%"
         except ValueError:
-            # Fallback if subcourse doesn't follow "course year" format
             course = subcourse
             year_pattern = "%"
             general_pattern = f"%{course} Classroom course%"
 
-        # Query combining year-specific and general classroom variants
         query = """
             SELECT Coursesubvariant FROM coursedetails 
             WHERE Courseid = %s AND Coursesubvariant LIKE %s
@@ -184,7 +179,7 @@ async def get_course_price(variant: str):
 async def get_scholarship_exams(course: str, city: str):
     try:
         logger.debug(f"Fetching scholarship exams for course: {course}, city: {city}")
-        result = db2.get_scholarship_exams(course, city)
+        result = await db1.get_scholarship_exams(course, city)
         return {"success": True, "data": result}
     except Exception as e:
         logger.error(f"Error fetching scholarship exams for course {course}, city {city}: {e}")
@@ -255,7 +250,7 @@ async def get_answer(question_id: int, course: str, subcourse: str, training_typ
     try:
         logger.debug(f"Fetching answer for question_id={question_id}, course={course}, subcourse={subcourse}, training_type={training_type}, city={city}")
         context = {"course": course, "subcourse": subcourse, "training_type": training_type, "city": city}
-        answer = await db1.get_answer(question_id, context, db1, db2)
+        answer = await db1.get_answer(question_id, context)
         logger.debug(f"Answer: {answer}")
         return {"success": True, "data": answer}
     except Exception as e:

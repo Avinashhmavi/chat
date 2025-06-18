@@ -1,5 +1,4 @@
 import aiomysql
-import pyodbc
 import logging
 import asyncio
 from contextlib import asynccontextmanager
@@ -22,7 +21,7 @@ class MySQLDB:
                 password=self.credentials['password'],
                 db=self.credentials['database'],
                 autocommit=True,
-                charset='utf8mb4'  # Add this to support Unicode characters
+                charset='utf8mb4'
             )
             logger.info("MySQL connection pool initialized")
             return self
@@ -85,7 +84,6 @@ class MySQLDB:
                 await cursor.execute(query, (city, f"%{course_title}%"))
                 results = await cursor.fetchall()
                 if not results:
-                    # Fallback to course-only filter if city not found
                     query = """
                         SELECT video_url
                         FROM course_testmonials
@@ -99,9 +97,6 @@ class MySQLDB:
             raise
 
     async def get_bschool_selection(self, course_id):
-        """
-        Fetch B-School Selection data based on course ID.
-        """
         query = """
             SELECT Subtitle, Link
             FROM coursecontent
@@ -154,7 +149,16 @@ class MySQLDB:
         query = "SELECT id, question_text FROM questions WHERE category_id = %s AND is_active = TRUE"
         return await self.query(query, (category_id,))
 
-    async def get_answer(self, question_id, context, db1, db2):
+    async def get_scholarship_exams(self, course, city):
+        query = "SELECT course, city, description, ttse_rstdate, ttse_date FROM ttse_creation WHERE course = %s AND (city = %s OR city IN ('All', 'all'))"
+        try:
+            result = await self.query(query, (course, city))
+            return result
+        except Exception as e:
+            logger.error(f"Error fetching scholarship exams for course {course}, city {city}: {e}")
+            raise
+
+    async def get_answer(self, question_id, context):
         query = """
             SELECT q.source_type, q.source_detail, sa.answer_text AS static_answer
             FROM questions q
@@ -179,7 +183,7 @@ class MySQLDB:
 
                 elif source_type == 'DB':
                     if source_detail == 'coursedetails':
-                        price_info = await db1.get_course_price(context.get('training_type'))
+                        price_info = await self.get_course_price(context.get('training_type'))
                         if price_info:
                             answer = f"The price for {context.get('training_type')} is ₹{price_info['Price']}."
                             if price_info['OfferPrice'] is not None and price_info['OfferPrice'].strip():
@@ -187,7 +191,7 @@ class MySQLDB:
                             return answer
                         return "No price information available for this course variant."
                     elif source_detail == 'ttse_creation':
-                        exams = db2.get_scholarship_exams(context.get('course'), context.get('city'))
+                        exams = await self.get_scholarship_exams(context.get('course'), context.get('city'))
                         if not exams:
                             return f"No scholarship exams available for {context.get('course')}."
                         answer = f"Scholarship exam(s) for {context.get('course')}:\n\n"
@@ -201,7 +205,15 @@ class MySQLDB:
                             reg_date_str = exam['ttse_rstdate']
                             exam_date_str = exam['ttse_date']
                             try:
-                                reg_date = datetime.strptime(reg_date_str, '%Y-%m-%d').date()
+                                # Handle datetime.date objects
+                                if isinstance(reg_date_str, date):
+                                    reg_date = reg_date_str
+                                else:
+                                    try:
+                                        reg_date = datetime.strptime(reg_date_str, '%Y-%m-%d').date()
+                                    except ValueError:
+                                        logger.error(f"Invalid date format for ttse_rstdate: {reg_date_str}")
+                                        continue
                                 exam_date = exam_date_str
                             except ValueError:
                                 logger.error(f"Invalid date format for ttse_rstdate: {reg_date_str}")
@@ -219,7 +231,7 @@ class MySQLDB:
                         return f"<div class='scholarship-details'>{answer.strip()}</div>"
                     elif source_detail == 'exam_info':
                         query = f"SELECT {source_detail} FROM exam_info WHERE course = %s"
-                        result = await db1.query(query, (context.get('course'),))
+                        result = await self.query(query, (context.get('course'),))
                         if result:
                             return result[0][source_detail]
                     return "No answer found for this question."
@@ -241,57 +253,3 @@ class MySQLDB:
             self.pool.close()
             await self.pool.wait_closed()
             logger.info("MySQL connection pool closed")
-
-class MSSQLDB:
-    def __init__(self, credentials):
-        self.credentials = credentials
-        self.conn = None
-        self.cursor = None
-        try:
-            conn_str = (
-                f"DRIVER={{SQL Server}};"
-                f"SERVER={self.credentials['server']};"
-                f"DATABASE={self.credentials['database']};"
-                f"UID={self.credentials['username']};"
-                f"PWD={self.credentials['password']}"
-            )
-            self.conn = pyodbc.connect(conn_str)
-            self.cursor = self.conn.cursor()
-            logger.info("MSSQL connection established")
-        except Exception as e:
-            logger.error(f"Error connecting to MSSQL: {e}")
-            raise
-
-    def execute_query(self, query, params=None):
-        try:
-            if params:
-                self.cursor.execute(query, params)
-            else:
-                self.cursor.execute(query)
-            if query.strip().upper().startswith("SELECT"):
-                columns = [desc[0] for desc in self.cursor.description]
-                results = self.cursor.fetchall()
-                return [dict(zip(columns, row)) for row in results]
-            self.conn.commit()
-            return self.cursor.rowcount
-        except Exception as e:
-            logger.error(f"MSSQL query error: {e}, query: {query}")
-            raise
-
-    def get_scholarship_exams(self, course, city):
-        query = "SELECT course, city, description, ttse_rstdate, ttse_date FROM ttse_creation WHERE course = ? AND (city = ? OR city IN ('All', 'all'))"
-        try:
-            self.cursor.execute(query, (course, city))
-            columns = [desc[0] for desc in self.cursor.description]
-            results = self.cursor.fetchall()
-            return [dict(zip(columns, row)) for row in results]
-        except Exception as e:
-            logger.error(f"Error fetching scholarship exams for course {course}, city {city}: {e}")
-            raise
-
-    def close(self):
-        if self.cursor:
-            self.cursor.close()
-        if self.conn:
-            self.conn.close()
-        logger.info("MSSQL connection closed")

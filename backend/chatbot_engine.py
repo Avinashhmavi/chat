@@ -4,9 +4,8 @@ logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
 
 class ChatbotEngine:
-    def __init__(self, db1, db2):
+    def __init__(self, db1):
         self.db1 = db1
-        self.db2 = db2
         self.user_context = {}
 
     def set_context(self, user_id, context):
