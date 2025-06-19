@@ -58,12 +58,6 @@ venv/scripts/activate
 ```bash
 pip install -r requirements.txt
 ```
-4. Create DB3
-
-Db3 is a `mySQL` database which stores the flow of the chatbot
-
-- Run the file `creating_db_schema.sql` proceeded by `adding_data.sql` in your MySQL to create a database that is used by the chatbot for the flow
-
 
 ### Step 3: Start the Chatbot
 #### Run Backend:
