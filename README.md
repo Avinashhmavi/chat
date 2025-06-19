@@ -64,26 +64,6 @@ Db3 is a `mySQL` database which stores the flow of the chatbot
 
 - Run the file `creating_db_schema.sql` proceeded by `adding_data.sql` in your MySQL to create a database that is used by the chatbot for the flow
 
-5. Create a `.env` file outside the `backend folder` and add the Db credentials
-```.env
-# DB1 (Remote MySQL)
-MYSQL_HOST=
-MYSQL_USER=
-MYSQL_PASSWORD=""
-MYSQL_DATABASE=
-
-# DB2 (Remote MSSQL)
-MSSQL_SERVER=
-MSSQL_DATABASE=
-MSSQL_USERNAME=
-MSSQL_PASSWORD=""
-
-# DB3 (MySQL for Chatbot)
-DB3_HOST=
-DB3_USER=
-DB3_PASSWORD=""
-DB3_DATABASE=
-```
 
 ### Step 3: Start the Chatbot
 #### Run Backend:
