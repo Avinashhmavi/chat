@@ -13,16 +13,20 @@ The repository contains the following key directories and files:
 - **backend/**: Contains the backend code.
   - `app.py`: Main application file.
   - `chatbot_engine.py`: Core chatbot logic for managing user context and interactions.
-  - `db_connect.py`: Database connection classes (`MySQLDB`, `MSSQLDB`, `DB3`).
+  - `db_connect.py`: Database connection classes (`MySQLDB`).
   - `config.py`: Configuration file for database credentials.
-  - `creating_db_schema.sql`: SQL script to set up the database schema.
+  - `db_api`: Fetches information from tables via api
   - `requirements.txt`: Python dependencies for the backend.
+- **sql_scripts_db3/**: Contains SQL scripts for chatbot tables
+  - `creating_db_schema.sql`: SQL script to set up the database schema.
+  - `adding_data.sql`: SQL script to add data in the tables
+  - `delete_chatbot_tables.sql`: SQL script to remove tables in case any changes are made.
 - **frontend/**: Contains the frontend code.
   - `index.html`: Main HTML file for the chatbot interface.
   - `script.js`: JavaScript file handling frontend logic and API interactions.
   - `style.css`: CSS file for styling the chatbot interface.
 - **README.md**: This file.
-
+- **start.sh**
 ---
 
 ## Setup Instructions
@@ -58,44 +62,31 @@ venv/scripts/activate
 ```bash
 pip install -r requirements.txt
 ```
+### Step 3: Make the scripts executable:
+```bash
+chmod +x start.sh
+```
 
-### Step 3: Start the Chatbot
+### Step 4: Start the Chatbot
 #### Run Backend:
 
-1. Open a terminal activate our environment
+1. Open a terminal activate our environment (use gitbash on windows)
 ```bash
 cd backend
-venv/scripts/activate
+source venv/scripts/activate
 ```
-2. Start the API Server for database queries
+2. Go back to root directory
 ```bash
-uvicorn db_api:app --port 8001
+cd ..
 ```
+
+3. Execute startup script
+```bash
+./start.sh
+```
+
 The db_api server will run at `http://localhost:8001`.
 
-<b>Now, Start a new terminal (Do not close the previous one</b>
-
-3. In the new Terminal, activate the environment again in the `backend` folder
-
-4. Start the application backend
-```bash
-cd backend
-venv/scripts/activate
-uvicorn app:app --port 5000
-```
 The app server will run at `http://localhost:5000`.
 
-#### Run Frontend:
-
-<b>Now, Start a new terminal (Do not close the previous one</b>
-
-1. Navigate to the frontend directory
-```bash
-cd frontend
-```
-
-2. Serve the frontend files
-```bash
-python -m http.server 8000
-```
-Access it at `http://localhost:8000`.
+Access the chatbot at `http://localhost:8000`.
