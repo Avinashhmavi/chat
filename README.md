@@ -15,7 +15,6 @@ The repository contains the following key directories and files:
   - `chatbot_engine.py`: Core chatbot logic for managing user context and interactions.
   - `db_connect.py`: Database connection classes (`MySQLDB`).
   - `config.py`: Configuration file for database credentials.
-  - `db_api`: Fetches information from tables via api
   - `requirements.txt`: Python dependencies for the backend.
 - **sql_scripts_db3/**: Contains SQL scripts for chatbot tables
   - `creating_db_schema.sql`: SQL script to set up the database schema.
@@ -62,31 +61,22 @@ venv/scripts/activate
 ```bash
 pip install -r requirements.txt
 ```
+
 ### Step 3: Make the scripts executable:
 ```bash
 chmod +x start.sh
 ```
 
 ### Step 4: Start the Chatbot
-#### Run Backend:
-
-1. Open a terminal activate our environment (use gitbash on windows)
-```bash
-cd backend
-source venv/scripts/activate
-```
-2. Go back to root directory
-```bash
-cd ..
-```
-
-3. Execute startup script
+#### FOR WINDOWS (use gitbash terminal)
+- Execute startup script
 ```bash
 ./start.sh
 ```
 
-The db_api server will run at `http://localhost:8001`.
-
-The app server will run at `http://localhost:5000`.
-
-Access the chatbot at `http://localhost:8000`.
+#### For other OS (Linux etc)
+- Edit the code of start.sh file for environment activation `source venv/bin/activate`
+```bash
+./start.sh
+```
+Access the chatbot at `http://localhost:5000`.
