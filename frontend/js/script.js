@@ -111,7 +111,7 @@ function fetchChatResponse(state, input) {
         input: input || '',
         user_id: userId
     };
-    fetch('http://localhost:5000/chat', {
+    fetch('/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)
@@ -154,7 +154,7 @@ function handleRegistration() {
         return;
     }
 
-    fetch('http://localhost:5000/register', {
+    fetch('/register', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name, mobile })
@@ -202,7 +202,7 @@ function verifyOTP() {
         return;
     }
 
-    fetch('http://localhost:5000/verify-otp', {
+    fetch('/verify-otp', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ user_id: userId, otp })

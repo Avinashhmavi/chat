@@ -1,32 +1,29 @@
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from config import MYSQL_CREDENTIALS
 from db_connect import MySQLDB
 from chatbot_engine import ChatbotEngine
-import httpx
 import logging
-import asyncio
 import random
 
 app = FastAPI()
 
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
 
+# CORS configuration
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:8000"],
+    allow_origins=["http://localhost:5000"],
     allow_credentials=True,
     allow_methods=["GET", "POST"],
     allow_headers=["Content-Type"],
 )
 
 db1 = MySQLDB(MYSQL_CREDENTIALS)
-
 chatbot = ChatbotEngine(db1)
-
-DB_API_URL = "http://localhost:8001"
 
 class RegisterRequest(BaseModel):
     name: str
@@ -40,32 +37,6 @@ class ChatRequest(BaseModel):
     state: str = "start"
     input: str = ""
     user_id: int | None = None
-
-async def call_db_api(endpoint, params=None, retries=3, backoff=1):
-    url = f"{DB_API_URL}{endpoint}"
-    async with httpx.AsyncClient(timeout=5) as client:
-        for attempt in range(retries):
-            try:
-                response = await client.get(url, params=params)
-                response.raise_for_status()
-                data = response.json()
-                if not data.get("success"):
-                    logger.error(f"API error at {url}: {data.get('error')}")
-                    raise HTTPException(status_code=500, detail=data.get("error"))
-                return data
-            except httpx.RequestError as e:
-                logger.error(f"API call failed at {url}: {e}")
-                if attempt == retries - 1:
-                    raise HTTPException(status_code=503, detail="Database API unavailable")
-                await asyncio.sleep(backoff * (2 ** attempt))
-
-@app.on_event("startup")
-async def startup_event():
-    await db1.init_pool()
-
-@app.on_event("shutdown")
-async def shutdown_event():
-    await db1.close()
 
 @app.post("/register")
 async def register(data: RegisterRequest):
@@ -114,11 +85,11 @@ async def chat(data: ChatRequest):
         elif state == "city_selected":
             selected_city = user_input.strip().encode('utf-8').decode('utf-8')
             nearest_center_response = await call_db_api("/api/find_nearest_center", params={"city": selected_city})
-            nearest_center = nearest_center_response.get("data", {}).get("nearest_center", selected_city) if nearest_center_response.get("success") else selected_city
-            city_data = await call_db_api(f"/api/city_data/{nearest_center}")
+            nearest_center = nearest_center_response.get("nearest_center", selected_city) if nearest_center_response.get("success") else selected_city
+            city_data = await call_db_api("/api/city_data", params={"city": nearest_center})
             if not city_data.get("data", {}).get("valid"):
                 nearest_center = "Hyderabad"
-                city_data = await call_db_api(f"/api/city_data/{nearest_center}")
+                city_data = await call_db_api("/api/city_data", params={"city": nearest_center})
                 if not city_data.get("data", {}).get("valid"):
                     logger.error(f"Hyderabad city data invalid: {city_data}")
                     return {
@@ -162,7 +133,7 @@ async def chat(data: ChatRequest):
                 }
             selected_course = user_input
             context = chatbot.get_context(user_id)
-            city_data = await call_db_api(f"/api/city_data/{context.get('city', '')}")
+            city_data = await call_db_api("/api/city_data", params={"city": context.get('city', '')})
             course_dict = {course["name"]: course["id"] for course in city_data.get("data", {}).get("courses", [])}
             course_id = course_dict.get(selected_course)
             if not course_id:
@@ -192,7 +163,7 @@ async def chat(data: ChatRequest):
         elif state == "subcourse_selected":
             if user_input in ["Back to courses", "Main page"]:
                 context = chatbot.get_context(user_id)
-                city_data = await call_db_api(f"/api/city_data/{context.get('city', '')}")
+                city_data = await call_db_api("/api/city_data", params={"city": context.get('city', '')})
                 return {
                     "response": f"Which course are you looking for in {context.get('city', '')}?",
                     "options": [course["name"] for course in city_data.get("data", {}).get("courses", [])],
@@ -239,7 +210,7 @@ async def chat(data: ChatRequest):
                 }
             if user_input == "Main page":
                 context = chatbot.get_context(user_id)
-                city_data = await call_db_api(f"/api/city_data/{context.get('city', '')}")
+                city_data = await call_db_api("/api/city_data", params={"city": context.get('city', '')})
                 return {
                     "response": f"Which course are you looking for in {context.get('city', '')}?",
                     "options": [course["name"] for course in city_data.get("data", {}).get("courses", [])],
@@ -284,7 +255,7 @@ async def chat(data: ChatRequest):
                 }
             if user_input == "Main page":
                 context = chatbot.get_context(user_id)
-                city_data = await call_db_api(f"/api/city_data/{context.get('city', '')}")
+                city_data = await call_db_api("/api/city_data", params={"city": context.get('city', '')})
                 return {
                     "response": f"Which course are you looking for in {context.get('city', '')}?",
                     "options": [course["name"] for course in city_data.get("data", {}).get("courses", [])],
@@ -347,7 +318,7 @@ async def chat(data: ChatRequest):
                 }
             elif selected_question == "Main page":
                 context = chatbot.get_context(user_id)
-                city_data = await call_db_api(f"/api/city_data/{context.get('city', '')}")
+                city_data = await call_db_api("/api/city_data", params={"city": context.get('city', '')})
                 return {
                     "response": f"Which course are you looking for in {context.get('city', '')}?",
                     "options": [course["name"] for course in city_data.get("data", {}).get("courses", [])],
@@ -586,7 +557,7 @@ async def chat(data: ChatRequest):
                 }
             if user_input == "Main page":
                 context = chatbot.get_context(user_id)
-                city_data = await call_db_api(f"/api/city_data/{context.get('city', '')}")
+                city_data = await call_db_api("/api/city_data", params={"city": context.get('city', '')})
                 return {
                     "response": f"Which course are you looking for in {context.get('city', '')}?",
                     "options": [course["name"] for course in city_data.get("data", {}).get("courses", [])],
@@ -631,7 +602,7 @@ async def chat(data: ChatRequest):
                 }
             if user_input == "Main page":
                 context = chatbot.get_context(user_id)
-                city_data = await call_db_api(f"/api/city_data/{context.get('city', '')}")
+                city_data = await call_db_api("/api/city_data", params={"city": context.get('city', '')})
                 return {
                     "response": f"Which course are you looking for in {context.get('city', '')}?",
                     "options": [course["name"] for course in city_data.get("data", {}).get("courses", [])],
@@ -694,3 +665,298 @@ async def chat(data: ChatRequest):
                 "options": [],
                 "next_state": "start"
             }
+
+# Helper function to call internal db_api routes
+async def call_db_api(endpoint, params=None):
+    try:
+        if endpoint == "/api/city_data":
+            return await get_city_data(params.get("city"))
+        if endpoint == "/api/find_nearest_center":
+            return await find_nearest_center(params.get("city"))
+        if endpoint == "/api/course_variants":
+            return await get_course_variants(params.get("course_id"), params.get("subcourse"))
+        if endpoint == "/api/course_price":
+            return await get_course_price(params.get("variant"))
+        if endpoint == "/api/scholarship_exams":
+            return await get_scholarship_exams(params.get("course"), params.get("city"))
+        if endpoint == "/api/questions":
+            return await get_questions(params.get("category_id"))
+        if endpoint == "/api/questions_dict":
+            return await get_questions_dict(params.get("category_id"))
+        if endpoint == "/api/answer":
+            return await get_answer(
+                params.get("question_id"),
+                params.get("course"),
+                params.get("subcourse"),
+                params.get("training_type"),
+                params.get("city")
+            )
+        if endpoint == "/api/subcourses":
+            return await get_subcourses(params.get("course"))
+
+        endpoint_map = {
+            "/api/cities": get_cities,
+            "/api/categories": get_categories,
+            "/api/categories_dict": get_categories_dict,
+        }
+        func = endpoint_map.get(endpoint)
+        if func:
+            return await func()
+
+        raise HTTPException(status_code=404, detail="Endpoint not found")
+
+    except HTTPException as e:
+        logger.error(f"Internal API error at {endpoint}: {e.detail}")
+        raise
+    except Exception as e:
+        logger.error(f"Unexpected error at {endpoint}: {e}")
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+@app.on_event("startup")
+async def startup_event():
+    await db1.init_pool()
+
+@app.on_event("shutdown")
+async def shutdown_event():
+    await db1.close()
+
+@app.get("/api/cities")
+async def get_cities():
+    try:
+        result = await db1.query("SELECT city FROM locations")
+        cities = [row['city'] for row in result]
+        logger.debug(f"Fetched cities: {cities}")
+        return {"success": True, "data": cities}
+    except Exception as e:
+        logger.error(f"Error fetching cities: {e}")
+        return {"success": False, "error": "Failed to fetch cities"}
+
+@app.get("/api/find_nearest_center")
+async def find_nearest_center(city: str):
+    try:
+        query = "SELECT nearest_center FROM mdl_city_state_centerslist WHERE LOWER(city) = LOWER(%s)"
+        result = await db1.query(query, (city,))
+        if result:
+            return {"success": True, "nearest_center": result[0]['nearest_center']}
+        else:
+            return {"success": False, "error": "City not found"}
+    except Exception as e:
+        logger.error(f"Error finding nearest center for city {city}: {e}")
+        return {"success": False, "error": "Failed to find nearest center"}
+
+@app.get("/api/courses/{city}")
+async def get_courses(city: str):
+    try:
+        logger.debug(f"Fetching courses for city: {city}")
+        result = await db1.query("SELECT school_courses, college_courses FROM locations WHERE city = %s", (city,))
+        if not result:
+            logger.info(f"No location found for city: {city}")
+            return {"success": True, "data": []}
+        school_courses = result[0]['school_courses'].split(',') if result[0]['school_courses'] else []
+        college_courses = result[0]['college_courses'].split(',') if result[0]['college_courses'] else []
+        all_courses = list(set(school_courses + college_courses))
+        all_courses = [course.strip() for course in all_courses if course.strip()]
+        logger.debug(f"Raw courses for {city}: {all_courses}")
+        if not all_courses:
+            logger.info(f"No courses found for city: {city}")
+            return {"success": True, "data": []}
+        placeholders = ','.join(['%s'] * len(all_courses))
+        query = f"SELECT id, title, coursename FROM courses WHERE course_status = 1 AND (title IN ({placeholders}) OR coursename IN ({placeholders}))"
+        logger.debug(f"Executing course query: {query} with params: {all_courses + all_courses}")
+        course_rows = await db1.query(query, all_courses + all_courses)
+        valid_courses = []
+        for course in all_courses:
+            for row in course_rows:
+                course_id, title, coursename = row['id'], row['title'], row['coursename']
+                if course == coursename:
+                    valid_courses.append({"name": coursename, "id": course_id})
+                    break
+                elif course == title:
+                    valid_courses.append({"name": course, "id": course_id})
+                    break
+        logger.debug(f"Valid courses for {city}: {valid_courses}")
+        return {"success": True, "data": valid_courses}
+    except Exception as e:
+        logger.error(f"Error fetching courses for {city}: {e}")
+        return {"success": False, "error": f"Failed to fetch courses: {str(e)}"}
+
+@app.get("/api/city_data/{city}")
+async def get_city_data(city: str):
+    try:
+        logger.debug(f"Fetching city data for: {city}")
+        cities_result = await db1.query("SELECT city FROM locations")
+        cities = [row['city'] for row in cities_result]
+        logger.debug(f"All cities: {cities}")
+        valid = city in cities
+        courses = []
+        if valid:
+            result = await db1.query("SELECT school_courses, college_courses FROM locations WHERE city = %s", (city,))
+            logger.debug(f"Location query result for {city}: {result}")
+            if result:
+                school_courses = result[0]['school_courses'].split(',') if result[0]['school_courses'] else []
+                college_courses = result[0]['college_courses'].split(',') if result[0]['college_courses'] else []
+                all_courses = list(set(school_courses + college_courses))
+                all_courses = [course.strip() for course in all_courses if course.strip()]
+                logger.debug(f"Raw courses for {city}: {all_courses}")
+                if all_courses:
+                    placeholders = ','.join(['%s'] * len(all_courses))
+                    query = f"SELECT id, title, coursename FROM courses WHERE course_status = 1 AND (title IN ({placeholders}) OR coursename IN ({placeholders}))"
+                    logger.debug(f"Executing course query: {query} with params: {all_courses + all_courses}")
+                    course_rows = await db1.query(query, all_courses + all_courses)
+                    logger.debug(f"Course query result: {course_rows}")
+                    for course in all_courses:
+                        for row in course_rows:
+                            course_id, title, coursename = row['id'], row['title'], row['coursename']
+                            if course == coursename:
+                                courses.append({"name": coursename, "id": course_id})
+                                break
+                            elif course == title:
+                                courses.append({"name": course, "id": course_id})
+                                break
+                else:
+                    logger.info(f"No courses found for city: {city}")
+            else:
+                logger.info(f"No location found for city: {city}")
+        else:
+            logger.warning(f"Invalid city: {city}")
+        seen_ids = set()
+        unique_courses = []
+        for course in courses:
+            if course["id"] not in seen_ids:
+                unique_courses.append(course)
+                seen_ids.add(course["id"])
+        logger.debug(f"Deduplicated courses for {city}: {unique_courses}")
+        response = {"success": True, "data": {"valid": valid, "cities": cities, "courses": unique_courses}}
+        logger.debug(f"City data response: {response}")
+        return response
+    except Exception as e:
+        logger.error(f"Error fetching city data for {city}: {e}")
+        return {"success": False, "error": f"Failed to fetch city data: {str(e)}"}
+
+@app.get("/api/course_variants")
+async def get_course_variants(course_id: int, subcourse: str):
+    try:
+        logger.debug(f"Fetching course variants for course_id={course_id}, subcourse={subcourse}")
+        try:
+            course, year = subcourse.split(' ', 1)
+            year_pattern = f"%{year}%"
+            general_pattern = f"%{course} Classroom course%"
+        except ValueError:
+            course = subcourse
+            year_pattern = "%"
+            general_pattern = f"%{course} Classroom course%"
+
+        query = """
+            SELECT Coursesubvariant FROM coursedetails 
+            WHERE Courseid = %s AND Coursesubvariant LIKE %s
+            UNION
+            SELECT Coursesubvariant FROM coursedetails 
+            WHERE Courseid = %s AND Coursesubvariant LIKE %s
+        """
+        result = await db1.query(query, (course_id, year_pattern, course_id, general_pattern))
+        variants = [row['Coursesubvariant'] for row in result]
+        logger.debug(f"Course variants: {variants}")
+        return {"success": True, "data": variants}
+    except Exception as e:
+        logger.error(f"Error fetching course variants for course_id={course_id}, subcourse={subcourse}: {e}")
+        return {"success": False, "error": f"Failed to fetch course variants: {str(e)}"}
+
+@app.get("/api/course_price")
+async def get_course_price(variant: str):
+    try:
+        logger.debug(f"Fetching price for variant: {variant}")
+        query = "SELECT Price, OfferPrice FROM coursedetails WHERE Coursesubvariant LIKE %s"
+        result = await db1.query(query, (f"%{variant}%",))
+        logger.debug(f"Query result for variant {variant}: {result}")
+        if result and len(result) > 0:
+            return {"success": True, "data": {"Price": result[0]['Price'], "OfferPrice": result[0]['OfferPrice']}}
+        logger.warning(f"No price found for variant: {variant}")
+        return {"success": False, "error": "No price found for this variant"}
+    except Exception as e:
+        logger.error(f"Error fetching price for variant {variant}: {e}")
+        return {"success": False, "error": f"Failed to fetch price: {str(e)}"}
+
+@app.get("/api/scholarship_exams")
+async def get_scholarship_exams(course: str, city: str):
+    try:
+        logger.debug(f"Fetching scholarship exams for course: {course}, city: {city}")
+        result = await db1.get_scholarship_exams(course, city)
+        return {"success": True, "data": result}
+    except Exception as e:
+        logger.error(f"Error fetching scholarship exams for course {course}, city {city}: {e}")
+        return {"success": False, "error": f"Failed to fetch scholarship exams: {str(e)}"}
+
+@app.get("/api/subcourses")
+async def get_subcourses(course: str):
+    try:
+        logger.debug(f"Fetching subcourses for course: {course}")
+        result = await db1.query_subcourses(course)
+        subcourses = [row['subcourse'] for row in result]
+        logger.debug(f"Subcourses: {subcourses}")
+        return {"success": True, "data": subcourses}
+    except Exception as e:
+        logger.error(f"Error fetching subcourses for {course}: {e}")
+        return {"success": False, "error": f"Failed to fetch subcourses: {str(e)}"}
+
+@app.get("/api/categories")
+async def get_categories():
+    try:
+        logger.debug("Fetching categories")
+        result = await db1.get_categories()
+        categories = [row['name'] for row in result]
+        logger.debug(f"Categories: {categories}")
+        return {"success": True, "data": categories}
+    except Exception as e:
+        logger.error(f"Error fetching categories: {e}")
+        return {"success": False, "error": f"Failed to fetch categories: {str(e)}"}
+
+@app.get("/api/categories_dict")
+async def get_categories_dict():
+    try:
+        logger.debug("Fetching categories_dict")
+        result = await db1.get_categories()
+        category_dict = {row['name']: row['id'] for row in result}
+        logger.debug(f"Categories dict: {category_dict}")
+        return {"success": True, "data": category_dict}
+    except Exception as e:
+        logger.error(f"Error fetching categories_dict: {e}")
+        return {"success": False, "error": f"Failed to fetch categories_dict: {str(e)}"}
+
+@app.get("/api/questions")
+async def get_questions(category_id: int):
+    try:
+        logger.debug(f"Fetching questions for category_id: {category_id}")
+        result = await db1.get_questions(category_id)
+        questions = [row['question_text'] for row in result]
+        logger.debug(f"Questions: {questions}")
+        return {"success": True, "data": questions}
+    except Exception as e:
+        logger.error(f"Error fetching questions for category {category_id}: {e}")
+        return {"success": False, "error": f"Failed to fetch questions: {str(e)}"}
+
+@app.get("/api/questions_dict")
+async def get_questions_dict(category_id: int):
+    try:
+        logger.debug(f"Fetching questions_dict for category_id: {category_id}")
+        result = await db1.get_questions(category_id)
+        question_dict = {row['question_text']: row['id'] for row in result}
+        logger.debug(f"Questions dict: {question_dict}")
+        return {"success": True, "data": question_dict}
+    except Exception as e:
+        logger.error(f"Error fetching questions_dict for category {category_id}: {e}")
+        return {"success": False, "error": f"Failed to fetch questions_dict: {str(e)}"}
+
+@app.get("/api/answer")
+async def get_answer(question_id: int, course: str, subcourse: str, training_type: str, city: str):
+    try:
+        logger.debug(f"Fetching answer for question_id={question_id}, course={course}, subcourse={subcourse}, training_type={training_type}, city={city}")
+        context = {"course": course, "subcourse": subcourse, "training_type": training_type, "city": city}
+        answer = await db1.get_answer(question_id, context)
+        logger.debug(f"Answer: {answer}")
+        return {"success": True, "data": answer}
+    except Exception as e:
+        logger.error(f"Error fetching answer for question {question_id}: {e}")
+        return {"success": False, "error": f"Failed to fetch answer: {str(e)}"}
+
+# Mount frontend folder to serve static files
+app.mount("/", StaticFiles(directory="../frontend", html=True), name="frontend")
