@@ -10,19 +10,22 @@ This README provides detailed steps to set up and run the project locally for te
 
 The repository contains the following key directories and files:
 
-- **backend/**: Contains the Flask backend code.
-  - `app.py`: Main Flask application file.
+- **backend/**: Contains the backend code.
+  - `app.py`: Main application file.
   - `chatbot_engine.py`: Core chatbot logic for managing user context and interactions.
-  - `db_connect.py`: Database connection classes (`MySQLDB`, `MSSQLDB`, `DB3`).
+  - `db_connect.py`: Database connection classes (`MySQLDB`).
   - `config.py`: Configuration file for database credentials.
-  - `creating_db_schema.sql`: SQL script to set up the database schema (if needed).
   - `requirements.txt`: Python dependencies for the backend.
+- **sql_scripts_db3/**: Contains SQL scripts for chatbot tables
+  - `creating_db_schema.sql`: SQL script to set up the database schema.
+  - `adding_data.sql`: SQL script to add data in the tables
+  - `delete_chatbot_tables.sql`: SQL script to remove tables in case any changes are made.
 - **frontend/**: Contains the frontend code.
   - `index.html`: Main HTML file for the chatbot interface.
   - `script.js`: JavaScript file handling frontend logic and API interactions.
   - `style.css`: CSS file for styling the chatbot interface.
 - **README.md**: This file.
-
+- **start.sh**
 ---
 
 ## Setup Instructions
@@ -34,8 +37,8 @@ Follow these steps to set up and run the TINA Chatbot locally.
 Clone the repository to your local machine using Git:
 
 ```bash
-git clone https://github.com/your-username/tina-chatbot.git
-cd tina-chatbot
+git clone https://github.com/your-username/TIME_chatbot.git
+cd TIME_chatbot
 ```
 Follow these steps to setup and run TINA
 
@@ -58,57 +61,22 @@ venv/scripts/activate
 ```bash
 pip install -r requirements.txt
 ```
-4. Create a `.env` file outside the `backend folder` and add the Db credentials
-```.env
-# DB1 (Remote MySQL)
-MYSQL_HOST=
-MYSQL_USER=
-MYSQL_PASSWORD=""
-MYSQL_DATABASE=
 
-# DB2 (Remote MSSQL)
-MSSQL_SERVER=
-MSSQL_DATABASE=
-MSSQL_USERNAME=
-MSSQL_PASSWORD=""
-
-# DB3 (Local MySQL)
-DB3_HOST=
-DB3_USER=
-DB3_PASSWORD=""
-DB3_DATABASE=
-```
-5. Create DB3
-
-Db3 is a `mySQL` database which stores the flow of the chatbot
-
-- Run the file `creating_db_schema.sql` proceeded by `adding_data.sql`
-
-### Step 3: Start the Chatbot
-#### Run Backend:
-
-1. Open a terminal activate our environment
+### Step 3: Make the scripts executable:
 ```bash
-cd backend
-venv/scripts/activate
+chmod +x start.sh
 ```
-2. Start the Flask Server
+
+### Step 4: Start the Chatbot
+#### FOR WINDOWS (use gitbash terminal)
+- Execute startup script
 ```bash
-python app.py
+./start.sh
 ```
-The flask server will run at `http://localhost:5000`.
 
-#### Run Frontend:
-
-<b>Now, Start a new terminal (Do not close the previous one</b>
-
-1. Navigate to the frontend directory
+#### For other OS (Linux etc)
+- Edit the code of start.sh file for environment activation `source venv/bin/activate`
 ```bash
-cd frontend
+./start.sh
 ```
-
-2. Serve the frontend files
-```bash
-python -m http.server 8000
-```
-Access it at `http://localhost:8000`.
+Access the chatbot at `http://localhost:5000`.

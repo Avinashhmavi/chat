@@ -1,32 +1,25 @@
-# Test DB1 (MySQL)
-import pymysql
-conn = pymysql.connect(
-    host='36.50.3.169',
-    user='dbuser',
-    password="5v)P11,D",
-    database='timeonli_sample'
-)
-conn.close()
-print("DB1 connected")
+import aiomysql
+import asyncio
+import os
+from dotenv import load_dotenv
 
-# Test DB3 (Local MySQL)
-conn = pymysql.connect(
-    host='localhost',
-    user='root',
-    password='Rudra@1879',
-    database='time_db3'
-)
-conn.close()
-print("DB3 connected")
+load_dotenv()
 
-# Test DB2 (MSSQL)
-import pyodbc
-conn = pyodbc.connect(
-    'DRIVER={ODBC Driver 17 for SQL Server};'
-    'SERVER=36.50.3.169;'
-    'DATABASE=VendorDB;'
-    'UID=vendorlogin;'
-    'PWD=Vendor@123'
-)
-conn.close()
-print("DB2 connected")
+async def test_db1():
+    try:
+        conn = await aiomysql.connect(
+            host=os.getenv('MYSQL_HOST'),
+            user=os.getenv('MYSQL_USER'),
+            password=os.getenv('MYSQL_PASSWORD'),
+            db=os.getenv('MYSQL_DATABASE')
+        )
+        conn.close()
+        print("DB1 connected")
+    except Exception as e:
+        print(f"DB1 connection failed: {e}")
+
+async def main():
+    await test_db1()
+
+if __name__ == "__main__":
+    asyncio.run(main())

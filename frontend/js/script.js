@@ -1,381 +1,336 @@
-document.addEventListener('DOMContentLoaded', function() {
-    const chatbotBtn = document.getElementById('chatbotBtn');
-    const chatbotBtnContainer = document.getElementById('chatbotBtnContainer');
-    const chatbotLabel = document.getElementById('chatbotLabel');
-    const chatbotPopup = document.getElementById('chatbotPopup');
-    const closeChat = document.getElementById('closeChat');
-    const sendBtn = document.getElementById('sendBtn');
-    const userInput = document.getElementById('userInput');
-    const registrationForm = document.getElementById('registrationForm');
-    const chatbotBody = document.getElementById('chatbotBody');
-    const messagesContainer = document.getElementById('messagesContainer');
-    const startChatBtn = document.getElementById('startChatBtn');
-    const userName = document.getElementById('userName');
-    const userMobile = document.getElementById('userMobile');
-    const voiceBtn = document.getElementById('voiceBtn');
-    const attachBtn = document.getElementById('attachBtn');
-    const fileInput = document.getElementById('fileInput');
+// Global variables
+let userId = null;
+let currentState = 'start';
+let isRegistered = false;
+let allOptions = []; // Store all options for filtering
+let optionsDiv = null; // Reference to the options container
 
-    let isRegistered = false;
-    let recognition = null;
-    let selectedFile = null;
-    let userId = null;
-    let currentState = 'start';
-
-    function initVoiceRecognition() {
-        try {
-            const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-            if (SpeechRecognition) {
-                recognition = new SpeechRecognition();
-                recognition.continuous = false;
-                recognition.interimResults = false;
-                
-                recognition.onresult = function(event) {
-                    const transcript = event.results[0][0].transcript;
-                    userInput.value = transcript;
-                    voiceBtn.classList.remove('listening');
-                };
-                
-                recognition.onerror = function(event) {
-                    console.error('Speech recognition error', event.error);
-                    voiceBtn.classList.remove('listening');
-                };
-                
-                recognition.onend = function() {
-                    voiceBtn.classList.remove('listening');
-                };
-                
-                voiceBtn.style.display = 'flex';
-                return true;
-            }
-        } catch (e) {
-            console.error("Speech recognition init error:", e);
-        }
-        
-        voiceBtn.style.display = 'none';
-        return false;
-    }
-
-    const voiceSupported = initVoiceRecognition();
-
-    chatbotBtn.addEventListener('click', function() {
-        chatbotPopup.classList.toggle('active');
-        chatbotLabel.style.opacity = '0';
-        chatbotLabel.style.visibility = 'hidden';
-        this.classList.add('animate-bounce');
-        setTimeout(() => {
-            this.classList.remove('animate-bounce');
-        }, 300);
-    });
-
-    closeChat.addEventListener('click', function() {
-        chatbotPopup.classList.remove('active');
-        setTimeout(() => {
-            chatbotLabel.style.opacity = '1';
-            chatbotLabel.style.visibility = 'visible';
-        }, 300);
-        if (recognition && voiceBtn.classList.contains('listening')) {
-            recognition.stop();
-        }
-    });
-
-    startChatBtn.addEventListener('click', function() {
-        const name = userName.value.trim();
-        const mobile = userMobile.value.trim();  // Changed variable name to 'mobile' for clarity
-
-        // Log the captured values to verify them
-        console.log('Captured name:', name);
-        console.log('Captured mobile:', mobile);  // Updated log message
-
-        // Validate the inputs
-        if (name && mobile && mobile.length === 10 && /^\d+$/.test(mobile)) {
-            const payload = { name, mobile };  // Changed 'phone' to 'mobile'
-            
-            // Log the payload to confirm what’s being sent
-            console.log('Sending payload:', JSON.stringify(payload));
-
-            fetch('http://localhost:5000/register', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(payload)
-            })
-            .then(response => {
-                console.log('Response status:', response.status);
-                if (!response.ok) throw new Error('Network response was not ok');
-                return response.json();
-            })
-            .then(data => {
-                console.log('Registration response:', data);
-                if (data.success) {
-                    userId = data.user_id;
-                    alert(data.message + ' (OTP: ' + data.otp + ')');
-                    const otpDiv = document.createElement('div');
-                    otpDiv.innerHTML = `
-                        <input type="text" id="otpInput" class="form-control" placeholder="Enter OTP">
-                        <button id="verifyOtpBtn" class="btn btn-primary mt-2">Verify OTP</button>
-                    `;
-                    registrationForm.appendChild(otpDiv);
-                    document.getElementById('verifyOtpBtn').addEventListener('click', () => verifyOtp(userId));
-                } else {
-                    alert(data.message);
-                }
-            })
-            .catch(error => {
-                console.error('Registration fetch error:', error);
-                alert('Registration failed. Please try again.');
-            });
-        } else {
-            alert('Please enter a valid name and 10-digit mobile number.');
-        }
-    });
-    function verifyOtp(userId) {
-        const otp = document.getElementById('otpInput').value.trim();
-        console.log('Verifying OTP for userId:', userId, 'with OTP:', otp);
-        if (otp) {
-            fetch('http://localhost:5000/verify_otp', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ user_id: userId, otp })
-            })
-            .then(response => {
-                if (!response.ok) throw new Error('Network response was not ok');
-                return response.json();
-            })
-            .then(data => {
-                console.log('OTP verification response:', data);
-                if (data.success) {
-                    isRegistered = true;
-                    registrationForm.classList.add('d-none');
-                    chatbotBody.classList.remove('d-none');
-                    startChatbot();
-                } else {
-                    alert(data.message);
-                }
-            })
-            .catch(error => {
-                console.error('OTP verification fetch error:', error);
-                alert('OTP verification failed. Please try again.');
-            });
-        } else {
-            alert('Please enter the OTP.');
-        }
-    }
-    function startChatbot() {
-        addMessage("Hello! I'm your T.I.M.E. assistant. Let's get started.", 'bot');
-        fetchChatResponse('start', '');
-    }
-
-    function fetchChatResponse(state, input) {
-        fetch('http://localhost:5000/chat', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ state, input, user_id: userId })
-        })
-        .then(response => {
-            if (!response.ok) throw new Error('Network response was not ok');
-            return response.json();
-        })
-        .then(data => {
-            addMessage(data.response, 'bot');
-            currentState = data.next_state;
-
-            if (data.options.length > 0) {
-                displayOptions(data.options, data.next_state);
-            } else if (data.next_state === 'question') {
-                addMessage('Type your question below:', 'bot');
-            } else if (data.options.length === 0 && data.next_state !== state) {
-                fetchChatResponse(data.next_state, '');
-            }
-
-            scrollToBottom();
-        })
-        .catch(error => {
-            console.error('Chat error:', error);
-            addMessage('Sorry, something went wrong. Let’s get back on track.', 'bot');
-            // Recover by resetting to category_selected state
-            currentState = 'category_selected';
-            fetchChatResponse('category_selected', '');
-            scrollToBottom();
-        });
-    }
-
-    function displayOptions(options, nextState) {
-        const optionsDiv = document.createElement('div');
-        optionsDiv.classList.add('prompts-inline');  // Add both classes to the container
-        options.forEach(option => {
-            const button = document.createElement('button');
-            button.textContent = option;
-            button.classList.add('option-btn');  // Only 'option-btn' for the buttons
-            button.addEventListener('click', () => {
-                addMessage(option, 'user');
-                fetchChatResponse(nextState, option);
-                optionsDiv.remove();
-            });
-            optionsDiv.appendChild(button);
-        });
-        messagesContainer.appendChild(optionsDiv);
-        scrollToBottom();
-    }
-
-    function sendMessage() {
-        if (!isRegistered) return;
-        const message = userInput.value.trim();
-        if (message || selectedFile) {
-            if (message) {
-                addMessage(message, 'user');
-                if (currentState === 'question') {
-                    fetchChatResponse(currentState, message);
-                } else {
-                    addMessage("Please select an option or wait for the next prompt.", 'bot');
-                }
-            }
-            if (selectedFile) addFilePreview(selectedFile);
-            userInput.value = '';
-            selectedFile = null;
-            fileInput.value = '';
-            scrollToBottom();
-        }
-    }
-
-    function addFilePreview(file) {
-        const reader = new FileReader();
-        reader.onload = function(e) {
-            const filePreview = document.createElement('div');
-            filePreview.classList.add('message', 'user-message');
-            if (file.type.startsWith('image/')) {
-                const img = document.createElement('img');
-                img.src = e.target.result;
-                img.classList.add('attachment-preview');
-                filePreview.appendChild(img);
-            } else {
-                const fileInfo = document.createElement('div');
-                fileInfo.textContent = `Attachment: ${file.name}`;
-                filePreview.appendChild(fileInfo);
-            }
-            messagesContainer.appendChild(filePreview);
-            scrollToBottom();
-        };
-        reader.readAsDataURL(file);
-    }
-
-    sendBtn.addEventListener('click', sendMessage);
-
-    userInput.addEventListener('keypress', function(e) {
-        if (e.key === 'Enter') {
-            sendMessage();
-        }
-    });
-
-    voiceBtn.addEventListener('click', function() {
-        if (!isRegistered) {
-            alert('Please register first');
-            return;
-        }
-        if (recognition) {
-            if (voiceBtn.classList.contains('listening')) {
-                recognition.stop();
-                voiceBtn.classList.remove('listening');
-            } else {
-                try {
-                    recognition.start();
-                    voiceBtn.classList.add('listening');
-                    userInput.placeholder = "Listening...";
-                    setTimeout(() => {
-                        userInput.placeholder = "Type your question...";
-                    }, 3000);
-                } catch (e) {
-                    console.error('Voice recognition error:', e);
-                    voiceBtn.classList.remove('listening');
-                }
-            }
-        } else {
-            alert("Voice search is not supported in your browser");
-        }
-    });
-
-    attachBtn.addEventListener('click', function() {
-        if (!isRegistered) {
-            alert('Please register first');
-            return;
-        }
-        fileInput.click();
-    });
-
-    fileInput.addEventListener('change', function() {
-        if (this.files && this.files[0]) {
-            selectedFile = this.files[0];
-            userInput.placeholder = `File attached: ${selectedFile.name}`;
-            setTimeout(() => {
-                userInput.placeholder = "Type your question...";
-            }, 3000);
-        }
-    });
-
-    function addMessage(text, sender) {
-        if (!text && sender === 'bot') return;
-        const messageDiv = document.createElement('div');
-        messageDiv.classList.add('message', `${sender}-message`);
-        messageDiv.textContent = text;
-        messagesContainer.appendChild(messageDiv);
-    }
-
-    function scrollToBottom() {
-        messagesContainer.scrollTop = messagesContainer.scrollHeight;
-    }
-
-    setTimeout(() => {
-        chatbotBtn.classList.add('animate-bounce');
-        setTimeout(() => {
-            chatbotBtn.classList.remove('animate-bounce');
-        }, 1000);
-    }, 1500);
-
-    console.log('Voice recognition supported:', voiceSupported);
-});
-
-document.addEventListener('DOMContentLoaded', function() {
-    const chatBtn = document.querySelector('.chatbot-btn');
-    let animationCount = 0;
-    const maxAnimations = 3;
-    
-    function triggerWaveAnimation() {
-        if (animationCount >= maxAnimations) return;
-        chatBtn.classList.add('wave-effect');
-        animationCount++;
-        setTimeout(() => {
-            chatBtn.classList.remove('wave-effect');
-            setTimeout(triggerWaveAnimation, 300);
-        }, 1500);
-    }
-    
-    triggerWaveAnimation();
-});
-
-document.getElementById('refreshChat').addEventListener('click', function() {
-    const messagesContainer = document.getElementById('messagesContainer');
-    messagesContainer.innerHTML = '';
-    const welcomeMessage = document.querySelector('.welcome-message');
-    if (welcomeMessage) {
-        welcomeMessage.classList.remove('d-none');
-    }
-    this.classList.add('refreshing');
-    setTimeout(() => {
-        this.classList.remove('refreshing');
-    }, 500);
-    currentState = 'start';
-    addMessage("Chat refreshed. Let's start over.", 'bot');
-    fetchChatResponse('start', '');
-});
-
+// Function to add messages to the chat
 function addMessage(text, sender) {
+    if (!text && sender === 'bot') return;
+    const messagesContainer = document.getElementById('messagesContainer');
+    if (!messagesContainer) {
+        console.error('Messages container not found');
+        return;
+    }
     const messageDiv = document.createElement('div');
     messageDiv.classList.add('message', `${sender}-message`);
-    messageDiv.textContent = text;
-    document.getElementById('messagesContainer').appendChild(messageDiv);
-    scrollToBottom();
-}
-
-function scrollToBottom() {
-    const messagesContainer = document.getElementById('messagesContainer');
+    messageDiv.innerHTML = text; // Use innerHTML to render HTML
+    messagesContainer.appendChild(messageDiv);
     messagesContainer.scrollTop = messagesContainer.scrollHeight;
 }
+
+// Function to display options
+function displayOptions(options, nextState, backOptions = []) {
+    const messagesContainer = document.getElementById('messagesContainer');
+    const userInput = document.getElementById('userInput');
+    if (!messagesContainer || !userInput) {
+        console.error('Messages container or user input not found');
+        return;
+    }
+    // Ensure options and backOptions are arrays
+    const safeOptions = Array.isArray(options) ? options : [];
+    const safeBackOptions = Array.isArray(backOptions) ? backOptions : [];
+    allOptions = safeOptions.concat(safeBackOptions); // Combine regular and back options
+    if (!allOptions.length) {
+        // No options to display; clear any existing optionsDiv
+        if (optionsDiv) {
+            optionsDiv.remove();
+            optionsDiv = null;
+        }
+        return;
+    }
+    if (optionsDiv) {
+        optionsDiv.remove(); // Remove previous optionsDiv if exists
+        optionsDiv = null;
+    }
+    optionsDiv = document.createElement('div');
+    optionsDiv.classList.add('prompts-inline');
+    renderOptions(safeOptions, safeBackOptions, nextState);
+    messagesContainer.appendChild(optionsDiv);
+    messagesContainer.scrollTop = messagesContainer.scrollHeight;
+    userInput.value = ''; // Clear input on new options
+}
+
+// Function to render filtered options
+function renderOptions(options, backOptions, nextState) {
+    if (!optionsDiv) return;
+    optionsDiv.innerHTML = '';
+    // Render regular options first
+    options.forEach(option => {
+        const button = document.createElement('button');
+        button.textContent = option;
+        button.classList.add('option-btn');
+        button.addEventListener('click', () => {
+            addMessage(option, 'user');
+            fetchChatResponse(nextState, option);
+            if (optionsDiv) {
+                optionsDiv.remove();
+                optionsDiv = null;
+            }
+            allOptions = [];
+            document.getElementById('userInput').value = '';
+        });
+        optionsDiv.appendChild(button);
+    });
+    // Render back options last (e.g., "Back", "Main page")
+    backOptions.forEach(option => {
+        const button = document.createElement('button');
+        // Display "Back" for any "Back to ..." option, keep "Main page" as-is
+        button.textContent = option.startsWith('Back to') ? 'Back' : option;
+        button.classList.add('back-btn'); // Only add back-btn class
+        button.addEventListener('click', () => {
+            addMessage(option, 'user'); // Send original option (e.g., "Back to courses") to backend
+            fetchChatResponse(nextState, option);
+            if (optionsDiv) {
+                optionsDiv.remove();
+                optionsDiv = null;
+            }
+            allOptions = [];
+            document.getElementById('userInput').value = '';
+        });
+        optionsDiv.appendChild(button);
+    });
+}
+
+// Function to filter options based on input
+function filterOptions(input) {
+    if (!allOptions.length || !optionsDiv) return;
+    const filteredOptions = allOptions.filter(option => 
+        option.toLowerCase().includes(input.toLowerCase())
+    );
+    const regularOptions = filteredOptions.filter(opt => !opt.startsWith('Back to') && opt !== 'Main page');
+    const backOptions = filteredOptions.filter(opt => opt.startsWith('Back to') || opt === 'Main page');
+    renderOptions(regularOptions, backOptions, currentState);
+}
+
+// Function to fetch chat responses from the server
+function fetchChatResponse(state, input) {
+    const payload = {
+        state,
+        input: input || '',
+        user_id: userId
+    };
+    fetch('/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+    })
+    .then(response => {
+        if (!response.ok) {
+            throw new Error(`Network response was not ok: ${response.status}`);
+        }
+        return response.json();
+    })
+    .then(data => {
+        addMessage(data.response, 'bot');
+        currentState = data.next_state;
+        // Ensure options and back_options are arrays
+        displayOptions(data.options || [], data.next_state, data.back_options || []);
+    })
+    .catch(error => {
+        console.error('Fetch error:', error);
+        addMessage('Oops, something went wrong. Restarting...', 'bot');
+        currentState = 'start';
+        fetchChatResponse('start', '');
+    });
+}
+
+// Function to handle registration
+function handleRegistration() {
+    const nameInput = document.getElementById('userName');
+    const mobileInput = document.getElementById('userMobile');
+    
+    if (!nameInput || !mobileInput) {
+        console.error('Registration inputs not found');
+        return;
+    }
+
+    const name = nameInput.value.trim();
+    const mobile = mobileInput.value.trim();
+
+    if (!name || !mobile || mobile.length !== 10 || !/^\d+$/.test(mobile)) {
+        alert('Please enter a valid name and 10-digit mobile number');
+        return;
+    }
+
+    fetch('/register', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name, mobile })
+    })
+    .then(response => {
+        if (!response.ok) throw new Error('Network response was not ok');
+        return response.json();
+    })
+    .then(data => {
+        if (data.success) {
+            userId = data.user_id;
+            alert(`Registration successful! OTP: ${data.otp}`);
+            const registrationForm = document.getElementById('registrationForm');
+            if (registrationForm) {
+                registrationForm.innerHTML = `
+                    <div class="welcome-message">Enter OTP sent to your mobile</div>
+                    <div class="mb-3">
+                        <input type="text" class="form-control" id="otpInput" placeholder="Enter OTP">
+                    </div>
+                    <button class="btn btn-primary" id="verifyOtpBtn">Verify OTP</button>
+                `;
+                document.getElementById('verifyOtpBtn').onclick = verifyOTP;
+            }
+        } else {
+            alert(data.message || 'Registration failed. Please try again.');
+        }
+    })
+    .catch(error => {
+        console.error('Registration error:', error);
+        alert('Registration failed. Please try again.');
+    });
+}
+
+// Function to verify OTP
+function verifyOTP() {
+    const otpInput = document.getElementById('otpInput');
+    if (!otpInput) {
+        console.error('OTP input not found');
+        return;
+    }
+
+    const otp = otpInput.value.trim();
+    if (!otp) {
+        alert('Please enter the OTP');
+        return;
+    }
+
+    fetch('/verify-otp', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ user_id: userId, otp })
+    })
+    .then(response => {
+        if (!response.ok) throw new Error('Network response was not ok');
+        return response.json();
+    })
+    .then(data => {
+        if (data.success) {
+            isRegistered = true;
+            const registrationForm = document.getElementById('registrationForm');
+            const chatbotBody = document.getElementById('chatbotBody');
+            if (registrationForm && chatbotBody) {
+                registrationForm.classList.add('d-none');
+                chatbotBody.classList.remove('d-none');
+            }
+            document.getElementById('chatInputContainer').classList.remove('d-none');
+            addMessage("Hello! I'm your T.I.M.E. assistant. Let's get started.", 'bot');
+            fetchChatResponse('start', '');
+        } else {
+            alert(data.message || 'Invalid OTP. Please try again.');
+        }
+    })
+    .catch(error => {
+        console.error('OTP verification error:', error);
+        alert('OTP verification failed. Please try again.');
+    });
+}
+
+// Function to reset and refresh the chat
+function refreshChat() {
+    const messagesContainer = document.getElementById('messagesContainer');
+    const userInput = document.getElementById('userInput');
+    if (messagesContainer) {
+        messagesContainer.innerHTML = '';
+    } else {
+        console.error('Messages container not found during refresh');
+    }
+    if (userInput) {
+        userInput.value = ''; // Clear input
+    }
+    if (optionsDiv) {
+        optionsDiv.remove();
+        optionsDiv = null;
+        allOptions = [];
+    }
+    currentState = 'start';
+    fetchChatResponse('start', '');
+}
+
+// Function to toggle chat popup
+function toggleChat() {
+    const popup = document.getElementById('chatbotPopup');
+    const btnContainer = document.getElementById('chatbotBtnContainer');
+    if (popup && btnContainer) {
+        popup.classList.toggle('active');
+        btnContainer.classList.toggle('active');
+    }
+}
+
+// Function to send user input to the backend
+function sendMessage() {
+    const userInput = document.getElementById('userInput');
+    if (!userInput) {
+        console.error('User input not found');
+        return;
+    }
+    const input = userInput.value.trim();
+    if (input) {
+        addMessage(input, 'user');
+        fetchChatResponse(currentState, input);
+        userInput.value = '';
+    }
+}
+
+// Initialize the chat when the DOM is loaded
+document.addEventListener('DOMContentLoaded', function() {
+    console.log('DOM fully loaded'); // Debug log
+    const sendButtonCheck = document.getElementById('sendButton');
+    console.log('Send button element:', sendButtonCheck); // Debug log
+
+    const chatbotBtn = document.getElementById('chatbotBtn');
+    if (chatbotBtn) {
+        chatbotBtn.onclick = toggleChat;
+    } else {
+        console.error('Chatbot button not found in DOM');
+    }
+
+    const closeBtn = document.getElementById('closeChat');
+    if (closeBtn) {
+        closeBtn.onclick = toggleChat;
+    } else {
+        console.error('Close button not found in DOM');
+    }
+
+    const refreshButton = document.getElementById('refreshChat');
+    if (refreshButton) {
+        refreshButton.onclick = refreshChat;
+    } else {
+        console.error('Refresh button not found in DOM');
+    }
+
+    const startChatBtn = document.getElementById('startChatBtn');
+    if (startChatBtn) {
+        startChatBtn.onclick = handleRegistration;
+    } else {
+        console.error('Start chat button not found in DOM');
+    }
+
+    const userInput = document.getElementById('userInput');
+    if (userInput) {
+        userInput.addEventListener('input', () => {
+            filterOptions(userInput.value);
+        });
+        userInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                sendMessage();
+            }
+        });
+    } else {
+        console.error('User input not found in DOM');
+    }
+
+    const sendButton = document.getElementById('sendButton');
+    if (sendButton) {
+        sendButton.addEventListener('click', sendMessage);
+    } else {
+        console.error('Send button not found in DOM');
+    }
+});
