@@ -517,37 +517,103 @@
             }
         });
 
-        // Calculate dynamic spacing based on content
-        let maxNodeHeight = boxHeight;
-        root.eachAfter(node => {
-            maxNodeHeight = Math.max(maxNodeHeight, node.data._boxHeight || boxHeight);
-        });
-        
-        // Update vertical spacing to accommodate larger nodes
-        const dynamicVerticalSpacing = Math.max(verticalSpacing, maxNodeHeight + 20);
-        
-        let treeLayout = d3.tree().nodeSize([horizontalSpacing, dynamicVerticalSpacing]);
+        // Use ultra-tight D3 layout horizontally, but fixed vertical spacing for initial layout
+        let treeLayout = d3.tree().nodeSize([1, 1]);
         treeLayout(root);
 
-        // Adjust horizontal positioning to prevent overlap
-        root.eachAfter(node => {
-            if (node.children) {
-                let totalChildWidth = 0;
-                node.children.forEach(child => {
-                    totalChildWidth += child.data._boxWidth || boxMinWidth;
-                });
-
-                // Add spacing between children
-                const totalSpacing = (node.children.length - 1) * 30;
-                totalChildWidth += totalSpacing;
-
-                let startX = node.x - totalChildWidth / 2;
-                node.children.forEach(child => {
-                    child.x = startX + (child.data._boxWidth || boxMinWidth) / 2;
-                    startX += (child.data._boxWidth || boxMinWidth) + 30;
-                });
+        // True overlap detection and minimal adjustment (horizontal only)
+        const maxDepth = d3.max(root.descendants(), d => d.depth);
+        const overlapPadding = 4;
+        for (let pass = 0; pass < 4; pass++) {
+            for (let level = 0; level <= maxDepth; level++) {
+                const levelNodes = getNodesAtLevel(root, level);
+                if (levelNodes.length <= 1) continue;
+                // Sort by x
+                levelNodes.sort((a, b) => a.x - b.x);
+                for (let i = 0; i < levelNodes.length - 1; i++) {
+                    const a = levelNodes[i];
+                    const b = levelNodes[i + 1];
+                    const aRight = a.x + (a.data._boxWidth || boxMinWidth) / 2;
+                    const bLeft = b.x - (b.data._boxWidth || boxMinWidth) / 2;
+                    if (aRight + overlapPadding > bLeft) {
+                        // Nudge b and all nodes to its right
+                        const nudge = aRight + overlapPadding - bLeft;
+                        for (let j = i + 1; j < levelNodes.length; j++) {
+                            levelNodes[j].x += nudge;
+                        }
+                    }
+                }
             }
-        });
+        }
+
+        // --- Diagonal/parent-child vertical adjustment ---
+        function adjustVerticalPositions(node) {
+            if (!node.children || node.children.length === 0) return;
+            // Sort children by y
+            node.children.sort((a, b) => a.y - b.y);
+            let currentY = node.y + (node.data._boxHeight || boxHeight) + 30; // 30px gap below parent
+            for (let i = 0; i < node.children.length; i++) {
+                const child = node.children[i];
+                // If this child would overlap the previous, nudge it down
+                if (i > 0) {
+                    const prev = node.children[i - 1];
+                    const prevBottom = prev.y + (prev.data._boxHeight || boxHeight) / 2;
+                    const childTop = child.y - (child.data._boxHeight || boxHeight) / 2;
+                    if (prevBottom + 10 > childTop) { // 10px vertical gap
+                        const nudge = prevBottom + 10 - childTop;
+                        child.y += nudge;
+                    }
+                }
+                // Ensure child is at least below the parent
+                if (child.y < currentY + (child.data._boxHeight || boxHeight) / 2) {
+                    child.y = currentY + (child.data._boxHeight || boxHeight) / 2;
+                }
+                // Recursively adjust children
+                adjustVerticalPositions(child);
+                // Update currentY for next child
+                currentY = child.y + (child.data._boxHeight || boxHeight) / 2;
+            }
+        }
+        adjustVerticalPositions(root);
+
+        // --- GLOBAL VERTICAL OVERLAP RESOLUTION ---
+        function globalVerticalOverlapResolution() {
+            const allNodes = root.descendants().sort((a, b) => a.y - b.y);
+            const vertPad = 10;
+            for (let pass = 0; pass < 4; pass++) {
+                for (let i = 0; i < allNodes.length - 1; i++) {
+                    const a = allNodes[i];
+                    const aTop = a.y - (a.data._boxHeight || boxHeight) / 2;
+                    const aBottom = a.y + (a.data._boxHeight || boxHeight) / 2;
+                    for (let j = i + 1; j < allNodes.length; j++) {
+                        const b = allNodes[j];
+                        // Only check if horizontally close enough to possibly overlap
+                        const aLeft = a.x - (a.data._boxWidth || boxMinWidth) / 2;
+                        const aRight = a.x + (a.data._boxWidth || boxMinWidth) / 2;
+                        const bLeft = b.x - (b.data._boxWidth || boxMinWidth) / 2;
+                        const bRight = b.x + (b.data._boxWidth || boxMinWidth) / 2;
+                        const horizontalOverlap = aRight > bLeft && bRight > aLeft;
+                        if (!horizontalOverlap) continue;
+                        const bTop = b.y - (b.data._boxHeight || boxHeight) / 2;
+                        if (aBottom + vertPad > bTop) {
+                            // Nudge b and all nodes below it
+                            const nudge = aBottom + vertPad - bTop;
+                            for (let k = j; k < allNodes.length; k++) {
+                                allNodes[k].y += nudge;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        globalVerticalOverlapResolution();
+        // --- END GLOBAL VERTICAL OVERLAP RESOLUTION ---
+
+        // Center parents over children (but don't over-adjust)
+        adjustParentPositions(root);
+
+        // Adjust SVG width if tree is very wide
+        adjustSvgWidth(root);
 
         let currentD3Node = root.descendants().find(d => d.data.id === nodeId);
         if (currentD3Node && zoom) {
@@ -649,7 +715,75 @@
                 renderQA(d.data, d.x, d.y);
             });
 
-        log('Tree rendered.');
+        log('Tree rendered with robust global overlap prevention.');
+    }
+
+    // Utility: Check if two nodes overlap
+    function nodesOverlap(node1, node2, padding = 10) {
+        const width1 = node1.data._boxWidth || boxMinWidth;
+        const height1 = node1.data._boxHeight || boxHeight;
+        const width2 = node2.data._boxWidth || boxMinWidth;
+        const height2 = node2.data._boxHeight || boxHeight;
+        
+        return !(node1.x + width1/2 + padding < node2.x - width2/2 ||
+                node1.x - width1/2 > node2.x + width2/2 + padding ||
+                node1.y + height1/2 + padding < node2.y - height2/2 ||
+                node1.y - height1/2 > node2.y + height2/2 + padding);
+    }
+
+    // Utility: Get all nodes at the same level (same depth)
+    function getNodesAtLevel(root, level) {
+        const nodes = [];
+        root.each(node => {
+            if (node.depth === level) {
+                nodes.push(node);
+            }
+        });
+        return nodes.sort((a, b) => a.x - b.x);
+    }
+
+    // Utility: Adjust parent positions to center over their children
+    function adjustParentPositions(root) {
+        root.eachAfter(node => {
+            if (node.children && node.children.length > 0) {
+                const children = node.children;
+                const minX = Math.min(...children.map(c => c.x));
+                const maxX = Math.max(...children.map(c => c.x));
+                const centerX = (minX + maxX) / 2;
+                
+                // Only adjust if the move is significant
+                if (Math.abs(node.x - centerX) > 5) {
+                    node.x = centerX;
+                }
+            }
+        });
+    }
+
+    // Utility: Adjust SVG width for very wide trees
+    function adjustSvgWidth(root) {
+        const allNodes = root.descendants();
+        if (allNodes.length === 0) return;
+        
+        const minX = d3.min(allNodes, d => d.x - (d.data._boxWidth || boxMinWidth) / 2);
+        const maxX = d3.max(allNodes, d => d.x + (d.data._boxWidth || boxMinWidth) / 2);
+        const treeWidth = maxX - minX;
+        
+        // Add padding
+        const requiredWidth = treeWidth + 100;
+        
+        if (requiredWidth > width) {
+            // Update SVG width
+            svg.attr('width', requiredWidth);
+            width = requiredWidth;
+            
+            // Update container overflow
+            if (container) {
+                container.style.overflowX = 'auto';
+                container.style.overflowY = 'hidden';
+            }
+            
+            log('Adjusted SVG width to:', requiredWidth, 'for tree width:', treeWidth);
+        }
     }
 
     // Expose public API
