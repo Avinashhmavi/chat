@@ -80,8 +80,13 @@ function renderOptions(options, backOptions, nextState) {
         button.textContent = option.startsWith('Back to') ? 'Back' : option;
         button.classList.add('back-btn'); // Only add back-btn class
         button.addEventListener('click', () => {
-            addMessage(option, 'user'); // Send original option (e.g., "Back to courses") to backend
+            addMessage(option, 'user');
             fetchChatResponse(nextState, option);
+            // Conversation Tree (removable): update tree after user selection
+            if (window.TreeModule) {
+                console.log('[Chatbot] Attempting to call TreeModule.addNode with:', option, nextState);
+                window.TreeModule.addNode(option, nextState, allOptions, {});
+            }
             if (optionsDiv) {
                 optionsDiv.remove();
                 optionsDiv = null;
@@ -125,6 +130,15 @@ function fetchChatResponse(state, input) {
     .then(data => {
         addMessage(data.response, 'bot');
         currentState = data.next_state;
+        // Conversation Tree (removable): update tree after response from server
+        if (window.TreeModule && input) { // only run if there was user input
+            window.TreeModule.addNode({
+                label: input,
+                previousState: state,
+                nextState: data.next_state,
+                options: data.options || []
+            });
+        }
         // Ensure options and back_options are arrays
         displayOptions(data.options || [], data.next_state, data.back_options || []);
     })
@@ -333,4 +347,47 @@ document.addEventListener('DOMContentLoaded', function() {
     } else {
         console.error('Send button not found in DOM');
     }
+
+    // --- Conversation Tree Event Listeners (removable) ---
+
+    // Listen for the tree telling the chatbot to rewind to a previous state
+    window.addEventListener('tree:rewind', (e) => {
+        console.log('[Chatbot] Received tree:rewind event. Details:', e.detail);
+        const { label, state, context } = e.detail;
+
+        // Clear existing messages and options
+        const messagesContainer = document.getElementById('messagesContainer');
+        if (messagesContainer) {
+            messagesContainer.innerHTML = '';
+        }
+        if (optionsDiv) {
+            optionsDiv.remove();
+            optionsDiv = null;
+        }
+
+        // Add a message indicating the rewind
+        addMessage(`Rewinding to "${label}"...`, 'bot');
+
+        // Call the backend with the old state to get the options for that point in the conversation
+        // Note: We pass an empty string for the 'input' because we are not selecting a new option,
+        // but rather re-fetching the state *after* the 'label' was originally selected.
+        fetchChatResponse(state, '');
+    });
+
+    // Listen for the tree telling the chatbot to jump to a new branch
+    window.addEventListener('tree:branch-jump', (e) => {
+        console.log('[Chatbot] Received tree:branch-jump event. Details:', e.detail);
+        const { label, state } = e.detail;
+
+        // This is equivalent to the user clicking an option button.
+        // We can simply call fetchChatResponse as if a button was clicked.
+        addMessage(label, 'user');
+        fetchChatResponse(state, label);
+
+        // Remove any existing option buttons from the chat
+        if (optionsDiv) {
+            optionsDiv.remove();
+            optionsDiv = null;
+        }
+    });
 });

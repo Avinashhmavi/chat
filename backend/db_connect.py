@@ -4,6 +4,8 @@ import asyncio
 from contextlib import asynccontextmanager
 from datetime import date
 from datetime import datetime
+import mysql.connector
+from mysql.connector import pooling
 
 logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
@@ -253,3 +255,53 @@ class MySQLDB:
             self.pool.close()
             await self.pool.wait_closed()
             logger.info("MySQL connection pool closed")
+
+#! TREEEEEEEEEEEEEEEEEEEEE
+
+    def get_training_types(self, course_id: int):
+        pass
+
+    def get_qa_for_category(self, category_name: str):
+        """
+        Fetches all questions and their static answers for a given category name.
+        """
+        query = """
+        SELECT q.question_text AS question, sa.answer_text AS answer
+        FROM categories c
+        JOIN questions q ON c.id = q.category_id
+        JOIN static_answers sa ON q.id = sa.question_id
+        WHERE c.name = %s AND q.is_active = TRUE;
+        """
+        try:
+            with self.get_cursor() as cursor:
+                cursor.execute(query, (category_name,))
+                results = cursor.fetchall()
+                logger.info(f"Fetched {len(results)} Q&A pairs for category '{category_name}'")
+                return results
+        except Exception as e:
+            logger.error(f"DB error in get_qa_for_category: {e}")
+            return []
+
+def get_db_connection():
+    pass
+
+def get_training_types(course_id: int):
+    pass
+
+def get_cities():
+    pass
+
+def get_courses(city: str):
+    pass
+
+def get_subcourses(course: str):
+    pass
+
+def get_categories():
+    pass
+
+def save_user_details(*args, **kwargs):
+    pass
+
+def get_qa_for_category(*args, **kwargs):
+    pass

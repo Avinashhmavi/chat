@@ -3,10 +3,12 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from config import MYSQL_CREDENTIALS
-from db_connect import MySQLDB
+from db_connect import MySQLDB, get_cities, get_courses, get_subcourses, get_training_types, get_categories, save_user_details, get_qa_for_category
 from chatbot_engine import ChatbotEngine
 import logging
 import random
+import mysql.connector
+from fastapi import Depends
 
 app = FastAPI()
 
@@ -232,7 +234,7 @@ async def chat(data: ChatRequest):
             if not category_options.get("data"):
                 logger.error("No categories found")
                 return {
-                    "response": "No categories available. Let’s start over.",
+                    "response": "No categories available. Let's start over.",
                     "options": [],
                     "next_state": "start"
                 }
@@ -653,7 +655,7 @@ async def chat(data: ChatRequest):
         try:
             category_options = await call_db_api("/api/categories")
             return {
-                "response": "Sorry, something went wrong. Let’s get back on track.",
+                "response": "Sorry, something went wrong. Let's get back on track.",
                 "options": category_options.get("data", []),
                 "next_state": "category_selected",
                 "back_options": ["Back to variants", "Main page"]
@@ -960,3 +962,16 @@ async def get_answer(question_id: int, course: str, subcourse: str, training_typ
 
 # Mount frontend folder to serve static files
 app.mount("/", StaticFiles(directory="../frontend", html=True), name="frontend")
+
+#! TREEEEEEEEEEEEEEEEEEEEEEEEEEEEE
+@app.get("/api/category_qa")
+def get_category_qa_endpoint(category_name: str):
+    """
+    API endpoint to fetch all questions and their static answers for a given category.
+    This is used by the conversation tree UI.
+    """
+    results = get_qa_for_category(category_name)
+    if not results:
+        # Even if no results, return an empty list, not an error
+        return []
+    return results
