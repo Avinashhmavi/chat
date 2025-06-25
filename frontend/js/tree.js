@@ -30,6 +30,7 @@
     let horizontalSpacing = 120;
     let verticalSpacing = 70;
     let categoryMap = {};
+    let hiddenDiv = null; // For measuring HTML content
 
     // Utility: Debug log
     function log(...args) {
@@ -39,6 +40,60 @@
     // Utility: Deep clone
     function deepClone(obj) {
         return JSON.parse(JSON.stringify(obj));
+    }
+
+    // Utility: Create hidden div for measuring HTML content
+    function createHiddenDiv() {
+        if (!hiddenDiv) {
+            hiddenDiv = document.createElement('div');
+            hiddenDiv.style.position = 'absolute';
+            hiddenDiv.style.visibility = 'hidden';
+            hiddenDiv.style.whiteSpace = 'nowrap';
+            hiddenDiv.style.fontFamily = 'Arial, sans-serif';
+            hiddenDiv.style.fontSize = '14px';
+            hiddenDiv.style.lineHeight = '1.4';
+            hiddenDiv.style.maxWidth = '300px';
+            hiddenDiv.style.wordWrap = 'break-word';
+            hiddenDiv.style.overflowWrap = 'break-word';
+            document.body.appendChild(hiddenDiv);
+        }
+        return hiddenDiv;
+    }
+
+    // Utility: Measure HTML content dimensions
+    function measureHtmlContent(htmlContent, maxWidth = 300) {
+        const div = createHiddenDiv();
+        div.innerHTML = htmlContent;
+        div.style.maxWidth = maxWidth + 'px';
+        
+        // Force layout calculation
+        div.style.display = 'block';
+        const rect = div.getBoundingClientRect();
+        div.style.display = 'none';
+        
+        return {
+            width: Math.max(rect.width + boxPadding.x * 2, boxMinWidth),
+            height: Math.max(rect.height + boxPadding.y * 2, boxHeight)
+        };
+    }
+
+    // Utility: Check if content contains HTML
+    function containsHtml(text) {
+        return /<[^>]+>/.test(text);
+    }
+
+    // Utility: Check if browser supports foreignObject
+    function supportsForeignObject() {
+        const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+        const foreignObject = document.createElementNS('http://www.w3.org/2000/svg', 'foreignObject');
+        return !!foreignObject;
+    }
+
+    // Utility: Strip HTML tags for fallback rendering
+    function stripHtml(html) {
+        const div = document.createElement('div');
+        div.innerHTML = html;
+        return div.textContent || div.innerText || '';
     }
 
     // Utility: Find node by id
@@ -164,10 +219,10 @@
                 const answerData = await answerResponse.json();
                 log('[TreeModule] /chat answer response for question:', question, answerData);
                 if (answerData.response) {
-                    const cleanAnswer = answerData.response.replace(/<[^>]+>/g, '').trim(); // Strip HTML for display
-                    const answerNode = findOrCreateChild(questionNode, cleanAnswer, answerData.next_state || 'answer', answerData.options || []);
+                    // Store the raw HTML response instead of stripping it
+                    const answerNode = findOrCreateChild(questionNode, answerData.response, answerData.next_state || 'answer', answerData.options || []);
                     answerNode.data = { raw_response: answerData.response };
-                    log('[TreeModule] Added answer node for question:', question, 'answer:', cleanAnswer);
+                    log('[TreeModule] Added answer node for question:', question, 'answer:', answerData.response);
                     // Handle subquestions recursively
                     if (answerData.options && answerData.options.length > 0 && answerData.next_state !== 'question_selected') {
                         for (const subOption of answerData.options) {
@@ -206,10 +261,10 @@
             const data = await response.json();
             log('[TreeModule] /chat subanswer response for:', subQuestionNode.label, data);
             if (data.response) {
-                const cleanAnswer = data.response.replace(/<[^>]+>/g, '').trim();
-                const answerNode = findOrCreateChild(subQuestionNode, cleanAnswer, data.next_state || 'answer', data.options || []);
+                // Store the raw HTML response instead of stripping it
+                const answerNode = findOrCreateChild(subQuestionNode, data.response, data.next_state || 'answer', data.options || []);
                 answerNode.data = { raw_response: data.response };
-                log('[TreeModule] Added subanswer node:', cleanAnswer);
+                log('[TreeModule] Added subanswer node:', data.response);
                 updateTree();
                 // Continue recursion if more options exist
                 if (data.options && data.options.length > 0 && data.next_state !== 'question_selected') {
@@ -275,6 +330,10 @@
     TreeModule.destroy = function() {
         if (!isInitialized) return;
         if (container) container.innerHTML = '';
+        if (hiddenDiv && hiddenDiv.parentNode) {
+            hiddenDiv.parentNode.removeChild(hiddenDiv);
+            hiddenDiv = null;
+        }
         svg = null;
         g = null;
         treeData = null;
@@ -440,22 +499,52 @@
         if (!treeData) return;
         g.selectAll('*').remove();
         let root = d3.hierarchy(treeData);
-        let treeLayout = d3.tree().nodeSize([horizontalSpacing, verticalSpacing]);
+        
+        // Pre-calculate node dimensions for all nodes
+        root.eachAfter(node => {
+            const content = node.data.label;
+            if (containsHtml(content) && supportsForeignObject()) {
+                // For HTML content, measure the actual rendered size
+                const dimensions = measureHtmlContent(content);
+                node.data._boxWidth = dimensions.width;
+                node.data._boxHeight = dimensions.height;
+            } else {
+                // For plain text or when foreignObject is not supported, use character-based calculation
+                const textContent = containsHtml(content) ? stripHtml(content) : content;
+                const textWidth = textContent.length * 8;
+                node.data._boxWidth = Math.max(textWidth + boxPadding.x * 2, boxMinWidth);
+                node.data._boxHeight = boxHeight;
+            }
+        });
+
+        // Calculate dynamic spacing based on content
+        let maxNodeHeight = boxHeight;
+        root.eachAfter(node => {
+            maxNodeHeight = Math.max(maxNodeHeight, node.data._boxHeight || boxHeight);
+        });
+        
+        // Update vertical spacing to accommodate larger nodes
+        const dynamicVerticalSpacing = Math.max(verticalSpacing, maxNodeHeight + 20);
+        
+        let treeLayout = d3.tree().nodeSize([horizontalSpacing, dynamicVerticalSpacing]);
         treeLayout(root);
 
+        // Adjust horizontal positioning to prevent overlap
         root.eachAfter(node => {
             if (node.children) {
                 let totalChildWidth = 0;
                 node.children.forEach(child => {
-                    const textWidth = child.data.label.length * 8;
-                    child.data._boxWidth = Math.max(textWidth + boxPadding.x * 2, boxMinWidth);
-                    totalChildWidth += child.data._boxWidth;
+                    totalChildWidth += child.data._boxWidth || boxMinWidth;
                 });
 
-                let startX = node.x - (totalChildWidth + (node.children.length - 1) * 20) / 2;
+                // Add spacing between children
+                const totalSpacing = (node.children.length - 1) * 30;
+                totalChildWidth += totalSpacing;
+
+                let startX = node.x - totalChildWidth / 2;
                 node.children.forEach(child => {
-                    child.x = startX + child.data._boxWidth / 2;
-                    startX += child.data._boxWidth + 20;
+                    child.x = startX + (child.data._boxWidth || boxMinWidth) / 2;
+                    startX += (child.data._boxWidth || boxMinWidth) + 30;
                 });
             }
         });
@@ -475,7 +564,7 @@
             .attr('class', 'link')
             .attr('d', d3.linkVertical()
                 .x(d => d.x)
-                .y(d => d.y + boxHeight / 2)
+                .y(d => d.y + (d.data._boxHeight || boxHeight) / 2)
             );
 
         let node = g.selectAll('.node')
@@ -500,22 +589,58 @@
                 }
             });
 
+        // Create background rectangle
         node.append('rect')
             .attr('transform', function(d) {
-                let boxWidth = d.data._boxWidth || Math.max((d.data.label || '').length * 8 + boxPadding.x * 2, boxMinWidth);
-                d.data._boxWidth = boxWidth;
+                const boxWidth = d.data._boxWidth || boxMinWidth;
+                const nodeHeight = d.data._boxHeight || boxHeight;
                 return `translate(${-boxWidth / 2}, 0)`;
             })
-            .attr('width', d => d.data._boxWidth)
-            .attr('height', boxHeight)
+            .attr('width', d => d.data._boxWidth || boxMinWidth)
+            .attr('height', d => d.data._boxHeight || boxHeight)
             .attr('rx', 8)
             .attr('ry', 8);
 
-        node.append('text')
-            .attr('y', boxHeight / 2)
-            .attr('text-anchor', 'middle')
-            .attr('dominant-baseline', 'middle')
-            .text(d => d.data.label);
+        // Render content - either as HTML or plain text
+        node.each(function(d) {
+            const nodeElement = d3.select(this);
+            const content = d.data.label;
+            const boxWidth = d.data._boxWidth || boxMinWidth;
+            const nodeHeight = d.data._boxHeight || boxHeight;
+            
+            if (containsHtml(content) && supportsForeignObject()) {
+                // Render HTML content using foreignObject
+                const foreignObject = nodeElement.append('foreignObject')
+                    .attr('x', -boxWidth / 2)
+                    .attr('y', 0)
+                    .attr('width', boxWidth)
+                    .attr('height', nodeHeight);
+                
+                const htmlDiv = foreignObject.append('xhtml:div')
+                    .style('width', '100%')
+                    .style('height', '100%')
+                    .style('display', 'flex')
+                    .style('align-items', 'center')
+                    .style('justify-content', 'center')
+                    .style('padding', '8px')
+                    .style('box-sizing', 'border-box')
+                    .style('font-family', 'Arial, sans-serif')
+                    .style('font-size', '14px')
+                    .style('line-height', '1.4')
+                    .style('word-wrap', 'break-word')
+                    .style('overflow-wrap', 'break-word')
+                    .style('text-align', 'center')
+                    .html(content);
+            } else {
+                // Render plain text (either no HTML or foreignObject not supported)
+                const textContent = containsHtml(content) ? stripHtml(content) : content;
+                nodeElement.append('text')
+                    .attr('y', nodeHeight / 2)
+                    .attr('text-anchor', 'middle')
+                    .attr('dominant-baseline', 'middle')
+                    .text(textContent);
+            }
+        });
 
         node.filter(d => d.data.options && d.data.options.length > 0 && (!d.children || d.children.length === 0))
             .on('dblclick', function(event, d) {

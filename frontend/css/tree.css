@@ -77,6 +77,60 @@
   fill: #e3f0ff;
 }
 
+/* HTML content styles for foreignObject elements */
+.node foreignObject div {
+  font-family: 'Segoe UI', sans-serif;
+  font-weight: 500;
+  font-size: 13px;
+  line-height: 1.4;
+  word-wrap: break-word;
+  overflow-wrap: break-word;
+  text-align: center;
+}
+
+/* Chosen nodes with HTML content */
+.node-chosen foreignObject div {
+  color: #ffffff;
+}
+
+/* Option nodes with HTML content */
+.node-option foreignObject div {
+  color: #343a40;
+}
+
+/* HTML element styles within nodes */
+.node foreignObject a {
+  color: inherit;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.node-chosen foreignObject a {
+  color: #ffffff;
+}
+
+.node-option foreignObject a {
+  color: #007bff;
+}
+
+.node foreignObject a:hover {
+  opacity: 0.8;
+}
+
+.node foreignObject b,
+.node foreignObject strong {
+  font-weight: 600;
+}
+
+.node foreignObject i,
+.node foreignObject em {
+  font-style: italic;
+}
+
+.node foreignObject u {
+  text-decoration: underline;
+}
+
 /* Q&A Box Styles */
 .qa-box {
   position: absolute;
