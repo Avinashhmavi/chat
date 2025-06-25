@@ -1,10 +1,3 @@
-// tree.js
-// Modular Conversation Tree Visualization for T.I.M.E. Chatbot
-// Requirements: D3.js (v7+), see tree.css for styles
-// To enable: include <script src="tree.js"></script> and <link rel="stylesheet" href="tree.css"> in your HTML
-// To remove: delete/comment out the above tags and the #tree-container div
-// Author: AiGENThix
-
 (function(window, document, d3) {
     'use strict';
     // TreeModule namespace
@@ -36,7 +29,7 @@
     let boxHeight = 32;
     let horizontalSpacing = 120;
     let verticalSpacing = 70;
-    let categoryMap = {}; // Store {category_name: category_id}
+    let categoryMap = {};
 
     // Utility: Debug log
     function log(...args) {
@@ -98,8 +91,7 @@
         node.children = [];
     }
 
-        // Fetch questions and answers for a category and add them as nodes
-        // Extract context from the tree path
+    // Extract context from the tree path
     function getContextFromNode(node) {
         let context = {};
         let current = node;
@@ -116,75 +108,121 @@
     // Fetch questions and answers for a category and add them as nodes
     async function fetchAndAddQA(categoryNode) {
         const categoryId = categoryMap[categoryNode.label];
-        if (!categoryId) return;
-
+        if (!categoryId) {
+            log('No category ID found for:', categoryNode.label);
+            return;
+        }
+        if (!window.userId) {
+            log('No userId available for category:', categoryNode.label);
+            alert('Please complete registration to view category answers.');
+            return;
+        }
         try {
-            // Fetch questions
+            log('Fetching questions for category:', categoryNode.label, 'categoryId:', categoryId);
+            // Fetch all questions for the category
             const response = await fetch(`/api/questions_dict?category_id=${categoryId}`);
             const data = await response.json();
-            if (data.success && data.data) {
-                // Correctly map question text to ID
-                for (const [question, questionId] of Object.entries(data.data)) {
-                    const questionNode = findOrCreateChild(categoryNode, question, 'question_selected', []);
-                    questionNode.data = { question_id: questionId };
-
-                    // Fetch answer with context
-                    const context = getContextFromNode(categoryNode);
-                    const params = new URLSearchParams({
-                        question_id: questionId,
-                        course: context.course || '',
-                        subcourse: context.subcourse || '',
-                        training_type: context.training_type || '',
-                        city: context.city || ''
-                    });
-                    const answerResponse = await fetch(`/api/answer?${params.toString()}`);
-                    const answerData = await answerResponse.json();
-                    if (answerData.success) {
-                        const answerNode = findOrCreateChild(questionNode, answerData.data, 'answer', answerData.options || []);
-                        updateTree(); // Update after adding answer
-
-                        // Handle subquestions recursively
-                        if (answerData.options && answerData.options.length > 0 && answerData.next_state !== "question_selected") {
-                            for (const subOption of answerData.options) {
-                                const subQuestionNode = findOrCreateChild(answerNode, subOption, answerData.next_state, []);
-                                await fetchSubAnswer(subQuestionNode, answerNode, context);
-                            }
+            log('[TreeModule] /api/questions_dict response:', data);
+            if (!data.success || !data.data) {
+                log('Failed to fetch questions for category:', categoryNode.label, data);
+                return;
+            }
+            // Set category context via /chat
+            const contextPayload = {
+                state: 'category_selected',
+                input: categoryNode.label,
+                user_id: window.userId
+            };
+            const contextResponse = await fetch('/chat', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(contextPayload)
+            });
+            const contextData = await contextResponse.json();
+            log('[TreeModule] Category context response:', contextData);
+            if (!contextData.options || !contextData.options.length) {
+                log('Failed to set category context - no options returned:', contextData);
+                return;
+            }
+            log('[TreeModule] Category context set successfully, proceeding with Q&A fetch');
+            // Batch fetch answers for all questions
+            for (const [question, questionId] of Object.entries(data.data)) {
+                const questionNode = findOrCreateChild(categoryNode, question, 'question_selected', []);
+                questionNode.data = { question_id: questionId };
+                log('[TreeModule] Created question node:', question);
+                // Fetch answer via /chat
+                const answerPayload = {
+                    state: 'question_selected',
+                    input: question,
+                    user_id: window.userId
+                };
+                const answerResponse = await fetch('/chat', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(answerPayload)
+                });
+                const answerData = await answerResponse.json();
+                log('[TreeModule] /chat answer response for question:', question, answerData);
+                if (answerData.response) {
+                    const cleanAnswer = answerData.response.replace(/<[^>]+>/g, '').trim(); // Strip HTML for display
+                    const answerNode = findOrCreateChild(questionNode, cleanAnswer, answerData.next_state || 'answer', answerData.options || []);
+                    answerNode.data = { raw_response: answerData.response };
+                    log('[TreeModule] Added answer node for question:', question, 'answer:', cleanAnswer);
+                    // Handle subquestions recursively
+                    if (answerData.options && answerData.options.length > 0 && answerData.next_state !== 'question_selected') {
+                        for (const subOption of answerData.options) {
+                            const subQuestionNode = findOrCreateChild(answerNode, subOption, answerData.next_state, []);
+                            await fetchSubAnswer(subQuestionNode, answerNode, { ...contextPayload });
                         }
                     }
+                } else {
+                    log('[TreeModule] Failed to fetch answer for question:', question, answerData);
                 }
             }
+            updateTree(); // Update tree after all questions and answers are added
         } catch (error) {
-            console.log('Error fetching Q&A:', error);
+            console.error('[TreeModule] Error fetching Q&A:', error);
         }
     }
 
     // Fetch subquestion answers recursively
     async function fetchSubAnswer(subQuestionNode, parentNode, context) {
+        if (!window.userId) {
+            log('No userId available for subquestion:', subQuestionNode.label);
+            alert('Please complete registration to view subquestion answers.');
+            return;
+        }
         try {
-            const params = new URLSearchParams({
+            const payload = {
                 state: subQuestionNode.state,
-                user_input: encodeURIComponent(subQuestionNode.label),
-                course: context.course || '',
-                subcourse: context.subcourse || '',
-                training_type: context.training_type || '',
-                city: context.city || ''
+                input: subQuestionNode.label,
+                user_id: window.userId
+            };
+            const response = await fetch('/chat', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
             });
-            const response = await fetch(`/api/chatbot?${params.toString()}`);
             const data = await response.json();
-            if (data.success) {
-                const answerNode = findOrCreateChild(subQuestionNode, data.response, data.next_state || 'answer', data.options || []);
-                updateTree(); // Update after adding subanswer
-
+            log('[TreeModule] /chat subanswer response for:', subQuestionNode.label, data);
+            if (data.response) {
+                const cleanAnswer = data.response.replace(/<[^>]+>/g, '').trim();
+                const answerNode = findOrCreateChild(subQuestionNode, cleanAnswer, data.next_state || 'answer', data.options || []);
+                answerNode.data = { raw_response: data.response };
+                log('[TreeModule] Added subanswer node:', cleanAnswer);
+                updateTree();
                 // Continue recursion if more options exist
-                if (data.options && data.options.length > 0 && data.next_state !== "question_selected") {
+                if (data.options && data.options.length > 0 && data.next_state !== 'question_selected') {
                     for (const subSubOption of data.options) {
                         const subSubQuestionNode = findOrCreateChild(answerNode, subSubOption, data.next_state, []);
                         await fetchSubAnswer(subSubQuestionNode, subQuestionNode, context);
                     }
                 }
+            } else {
+                log('[TreeModule] Failed to fetch subanswer for:', subQuestionNode.label, data);
             }
         } catch (error) {
-            console.log('Error fetching subanswer:', error);
+            console.error('[TreeModule] Error fetching subanswer:', error);
         }
     }
 
@@ -197,9 +235,7 @@
             log('No tree container found, aborting init.');
             return;
         }
-        // Clear container
         container.innerHTML = '';
-        // Set up SVG
         width = container.offsetWidth || 900;
         height = container.offsetHeight || 600;
         svg = d3.select(container)
@@ -207,17 +243,14 @@
             .attr('width', width)
             .attr('height', height)
             .attr('class', 'tree-svg');
-        // Add zoomable group
         zoomGroup = svg.append('g').attr('class', 'zoom-group');
         g = zoomGroup.append('g').attr('class', 'tree-main-group');
-        // D3 zoom behavior
         zoom = d3.zoom()
             .scaleExtent([0.3, 2.5])
             .on('zoom', (event) => {
                 zoomGroup.attr('transform', event.transform);
             });
         svg.call(zoom);
-        // Center the tree initially
         svg.call(zoom.transform, d3.zoomIdentity.translate(width/2, 40));
         treeData = null;
         treeRoot = null;
@@ -227,7 +260,6 @@
         isInitialized = true;
         log('Tree initialized.');
 
-        // Fetch categories dynamically
         fetch('/api/categories_dict')
             .then(response => response.json())
             .then(data => {
@@ -271,8 +303,7 @@
         return newNode;
     }
 
-    // Add a node to the tree (called after each user selection)
-    // context: object { label, previousState, nextState, options, previousLabel }
+    // Add a node to the tree
     TreeModule.addNode = function(context) {
         log('addNode called with context:', context);
         const { label, previousState, nextState, options, previousLabel } = context;
@@ -281,7 +312,6 @@
         if (!label) return;
 
         if (!treeData) {
-            // Tree has not started yet. Check if this is the moment.
             if (previousState === 'course_selected') {
                 log('Tree starting with root node:', label);
                 treeData = {
@@ -295,10 +325,9 @@
                 nodeId = treeData.id;
             } else {
                 log('Tree start deferred. Previous state was not "course_selected".');
-                return; // Exit, not time to start yet.
+                return;
             }
         } else {
-            // Find the parent node by previous label (or fallback to nodeId for legacy)
             let parentNode = null;
             if (context.previousLabel) {
                 parentNode = findNodeByLabel(treeData, context.previousLabel);
@@ -308,28 +337,21 @@
             }
             if (!parentNode) {
                 log('Error: Could not find the parent node in the tree. Resetting.', 'Current Node ID:', nodeId);
-                treeData = null; // Reset the tree to be safe
+                treeData = null;
                 return;
             }
 
-            // Find or create the newly selected child
             let selectedChild = findOrCreateChild(parentNode, label, nextState, options);
-
-            // Prune all siblings and children after the selected node
             pruneSiblingsAndChildren(selectedChild, parentNode);
-
-            // Mark only the selected child as chosen
             parentNode.children.forEach(child => child.isChosen = (child === selectedChild));
-            nodeId = selectedChild.id; // Update current node ID to the selected child
+            nodeId = selectedChild.id;
 
-            // Add the next layer of options as children (but do not mark any as chosen)
             if (selectedChild.options) {
                 selectedChild.options.forEach(opt => {
                     findOrCreateChild(selectedChild, opt, nextState, []);
                 });
             }
 
-            // Check if this is a category node and fetch Q&A
             if (categoryMap[selectedChild.label]) {
                 fetchAndAddQA(selectedChild);
             }
@@ -339,19 +361,17 @@
         updateTree();
     };
 
-    // Rewind to a previous node (by id)
+    // Rewind to a previous node
     function rewindToNode(id) {
         let path = findPathToNode(treeData, id, []);
         if (!path) return;
         let nodeData = path[path.length - 1];
         let parent = path.length > 1 ? path[path.length - 2] : null;
-        // Prune all siblings and children after the selected node
         pruneSiblingsAndChildren(nodeData, parent);
         nodeId = nodeData.id;
         lastState = nodeData.state;
         log('Rewound to node:', nodeData.label);
         updateTree();
-        // Fire a custom event to notify the chatbot to rewind its state
         let evt = new CustomEvent('tree:rewind', {
             detail: {
                 label: nodeData.label,
@@ -369,11 +389,9 @@
         if (!path) return;
         let parent = path[path.length - 2];
         if (!parent) return;
-        // Remove all children after parent
         pruneAfterNode(parent);
         nodeId = parent.id;
         lastState = parent.state;
-        // Add new branch
         TreeModule.addNode({ label: siblingLabel, previousState: parent.state, nextState: parent.state, options: [] });
         log('Jumped to sibling branch:', siblingLabel);
     }
@@ -397,7 +415,6 @@
 
     // Render Q&A boxes below a category node
     function renderQA(node, x, y) {
-        // Remove old Q&A
         d3.select(container).selectAll('.qa-box').remove();
         fetchQA(node.label, function(qaList) {
             if (!qaList || !qaList.length) return;
@@ -421,45 +438,36 @@
     function updateTree() {
         log('updateTree called. Current treeData:', deepClone(treeData));
         if (!treeData) return;
-        g.selectAll('*').remove(); // Clear previous render
-        // D3 tree layout
+        g.selectAll('*').remove();
         let root = d3.hierarchy(treeData);
-
-        // Assign initial positions to every node
         let treeLayout = d3.tree().nodeSize([horizontalSpacing, verticalSpacing]);
         treeLayout(root);
 
-        // --- Overlap Prevention ---
-        // Second pass to adjust x-positions based on actual node widths
         root.eachAfter(node => {
             if (node.children) {
                 let totalChildWidth = 0;
                 node.children.forEach(child => {
-                    const textWidth = child.data.label.length * 8; // Estimate text width
+                    const textWidth = child.data.label.length * 8;
                     child.data._boxWidth = Math.max(textWidth + boxPadding.x * 2, boxMinWidth);
                     totalChildWidth += child.data._boxWidth;
                 });
 
-                let startX = node.x - (totalChildWidth + (node.children.length - 1) * 20) / 2; // 20 is padding
-
+                let startX = node.x - (totalChildWidth + (node.children.length - 1) * 20) / 2;
                 node.children.forEach(child => {
                     child.x = startX + child.data._boxWidth / 2;
-                    startX += child.data._boxWidth + 20; // Move to next position
+                    startX += child.data._boxWidth + 20;
                 });
             }
         });
-        // --- End Overlap Prevention ---
 
-        // Center the tree view on the current node
         let currentD3Node = root.descendants().find(d => d.data.id === nodeId);
         if (currentD3Node && zoom) {
             const transform = d3.zoomIdentity
                 .translate(width / 2 - currentD3Node.x, height / 2 - currentD3Node.y)
-                .scale(1); // You can adjust the scale here if you want
+                .scale(1);
             svg.transition().duration(config.transitionDuration).call(zoom.transform, transform);
         }
 
-        // Draw links
         g.selectAll('.link')
             .data(root.links())
             .enter()
@@ -469,7 +477,7 @@
                 .x(d => d.x)
                 .y(d => d.y + boxHeight / 2)
             );
-        // Draw nodes as rectangles
+
         let node = g.selectAll('.node')
             .data(root.descendants())
             .enter()
@@ -491,10 +499,9 @@
                     window.dispatchEvent(jumpEvt);
                 }
             });
-        // Draw rectangles sized to fit text
+
         node.append('rect')
             .attr('transform', function(d) {
-                // Use pre-calculated width, or calculate if not present
                 let boxWidth = d.data._boxWidth || Math.max((d.data.label || '').length * 8 + boxPadding.x * 2, boxMinWidth);
                 d.data._boxWidth = boxWidth;
                 return `translate(${-boxWidth / 2}, 0)`;
@@ -503,19 +510,20 @@
             .attr('height', boxHeight)
             .attr('rx', 8)
             .attr('ry', 8);
-        // Draw text inside rectangles
+
         node.append('text')
             .attr('y', boxHeight / 2)
             .attr('text-anchor', 'middle')
             .attr('dominant-baseline', 'middle')
             .text(d => d.data.label);
-        // Q&A double-click (retained for manual triggering if needed)
+
         node.filter(d => d.data.options && d.data.options.length > 0 && (!d.children || d.children.length === 0))
             .on('dblclick', function(event, d) {
                 event.stopPropagation();
                 log(`Fetching Q&A for category: ${d.data.label}`);
                 renderQA(d.data, d.x, d.y);
             });
+
         log('Tree rendered.');
     }
 
@@ -526,9 +534,7 @@
         addNode: TreeModule.addNode
     };
 
-    // Defer initialization until the DOM is fully loaded to prevent race conditions.
     document.addEventListener('DOMContentLoaded', () => {
-        // Auto-init if container exists
         if (document.getElementById(config.containerId)) {
             TreeModule.init();
         }
