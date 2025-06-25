@@ -40,7 +40,13 @@
   cursor: pointer;
 }
 
-/* Node for the chosen path */
+/* Remove the yellow border for the current node */
+.node-current rect {
+  stroke-width: 2px;
+  stroke: #0056b3;
+}
+
+/* Chosen path nodes are blue */
 .node-chosen rect {
   fill: #007bff;
   stroke: #0056b3;
@@ -58,11 +64,6 @@
 
 .node-option text {
   fill: #343a40;
-}
-
-.node-current rect {
-  stroke-width: 3px;
-  stroke: #ffc107;
 }
 
 .node text {

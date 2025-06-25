@@ -79,6 +79,24 @@
         return path.some(n => n.label === label);
     }
 
+    // Utility: Find node by label (first match, depth-first)
+    function findNodeByLabel(node, label) {
+        if (node.label === label) return node;
+        if (!node.children) return null;
+        for (let child of node.children) {
+            let found = findNodeByLabel(child, label);
+            if (found) return found;
+        }
+        return null;
+    }
+
+    // Utility: Prune all children and siblings after a node
+    function pruneSiblingsAndChildren(node, parent) {
+        if (!parent || !parent.children) return;
+        parent.children = parent.children.filter(child => child === node);
+        node.children = [];
+    }
+
     // Initialize the tree
     TreeModule.init = function(options = {}) {
         if (isInitialized) return;
@@ -152,10 +170,10 @@
     }
 
     // Add a node to the tree (called after each user selection)
-    // context: object { label, previousState, nextState, options }
+    // context: object { label, previousState, nextState, options, previousLabel }
     TreeModule.addNode = function(context) {
         log('addNode called with context:', context);
-        const { label, previousState, nextState, options } = context;
+        const { label, previousState, nextState, options, previousLabel } = context;
 
         if (!isInitialized) return;
         if (!label) return;
@@ -172,39 +190,37 @@
                     isChosen: true,
                     children: []
                 };
+                nodeId = treeData.id;
             } else {
                 log('Tree start deferred. Previous state was not "course_selected".');
                 return; // Exit, not time to start yet.
             }
         } else {
-            // Tree exists, find the parent node to add children to.
-            let parentNode = findNodeById(treeData, nodeId);
+            // Find the parent node by previous label (or fallback to nodeId for legacy)
+            let parentNode = null;
+            if (context.previousLabel) {
+                parentNode = findNodeByLabel(treeData, context.previousLabel);
+            }
             if (!parentNode) {
-                log('Error: Could not find the current node in the tree. Resetting.', 'Current Node ID:', nodeId);
+                parentNode = findNodeById(treeData, nodeId);
+            }
+            if (!parentNode) {
+                log('Error: Could not find the parent node in the tree. Resetting.', 'Current Node ID:', nodeId);
                 treeData = null; // Reset the tree to be safe
                 return;
             }
 
-            // Mark all existing children of the parent as not chosen
-            if (parentNode.children) {
-                parentNode.children.forEach(child => child.isChosen = false);
-            }
-
             // Find or create the newly selected child
             let selectedChild = findOrCreateChild(parentNode, label, nextState, options);
-            selectedChild.isChosen = true;
-            nodeId = selectedChild.id; // Update current node ID
 
-            // Add all other options as unchosen children to the parent
-            if (parentNode.options) {
-                parentNode.options.forEach(opt => {
-                    if (opt !== label) {
-                        findOrCreateChild(parentNode, opt, parentNode.state, []);
-                    }
-                });
-            }
+            // Prune all siblings and children after the selected node
+            pruneSiblingsAndChildren(selectedChild, parentNode);
 
-            // And now, pre-populate the *next* layer of branches from the newly selected node
+            // Mark only the selected child as chosen
+            parentNode.children.forEach(child => child.isChosen = (child === selectedChild));
+            nodeId = selectedChild.id; // Update current node ID to the selected child
+
+            // Add the next layer of options as children (but do not mark any as chosen)
             if (selectedChild.options) {
                 selectedChild.options.forEach(opt => {
                     findOrCreateChild(selectedChild, opt, nextState, []);
@@ -221,16 +237,13 @@
         let path = findPathToNode(treeData, id, []);
         if (!path) return;
         let nodeData = path[path.length - 1];
-
-        // Prune the tree
-        pruneAfterNode(nodeData);
+        let parent = path.length > 1 ? path[path.length - 2] : null;
+        // Prune all siblings and children after the selected node
+        pruneSiblingsAndChildren(nodeData, parent);
         nodeId = nodeData.id;
         lastState = nodeData.state;
         log('Rewound to node:', nodeData.label);
-
-        // Re-render the tree visually
         updateTree();
-
         // Fire a custom event to notify the chatbot to rewind its state
         let evt = new CustomEvent('tree:rewind', {
             detail: {
