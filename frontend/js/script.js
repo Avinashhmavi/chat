@@ -143,7 +143,7 @@ function fetchChatResponse(state, input) {
         displayOptions(data.options || [], data.next_state, data.back_options || []);
     })
     .catch(error => {
-        console.error('Fetch error:', error);
+        console.error('Fetch error details:', error);
         addMessage('Oops, something went wrong. Restarting...', 'bot');
         currentState = 'start';
         fetchChatResponse('start', '');
@@ -180,6 +180,7 @@ function handleRegistration() {
     .then(data => {
         if (data.success) {
             userId = data.user_id;
+            window.userId = userId; // Set globally for tree
             alert(`Registration successful! OTP: ${data.otp}`);
             const registrationForm = document.getElementById('registrationForm');
             if (registrationForm) {
@@ -228,6 +229,7 @@ function verifyOTP() {
     .then(data => {
         if (data.success) {
             isRegistered = true;
+            window.userId = userId; // Ensure it's still set globally
             const registrationForm = document.getElementById('registrationForm');
             const chatbotBody = document.getElementById('chatbotBody');
             if (registrationForm && chatbotBody) {

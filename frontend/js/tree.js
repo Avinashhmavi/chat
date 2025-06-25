@@ -36,6 +36,7 @@
     let boxHeight = 32;
     let horizontalSpacing = 120;
     let verticalSpacing = 70;
+    let categoryMap = {}; // Store {category_name: category_id}
 
     // Utility: Debug log
     function log(...args) {
@@ -97,6 +98,96 @@
         node.children = [];
     }
 
+        // Fetch questions and answers for a category and add them as nodes
+        // Extract context from the tree path
+    function getContextFromNode(node) {
+        let context = {};
+        let current = node;
+        while (current) {
+            if (current.state === "city_selected") context.city = current.label;
+            else if (current.state === "course_selected") context.course = current.label;
+            else if (current.state === "subcourse_selected") context.subcourse = current.label;
+            else if (current.state === "training_type_selected") context.training_type = current.label;
+            current = findNodeById(treeData, current.id)?.parent;
+        }
+        return context;
+    }
+
+    // Fetch questions and answers for a category and add them as nodes
+    async function fetchAndAddQA(categoryNode) {
+        const categoryId = categoryMap[categoryNode.label];
+        if (!categoryId) return;
+
+        try {
+            // Fetch questions
+            const response = await fetch(`/api/questions_dict?category_id=${categoryId}`);
+            const data = await response.json();
+            if (data.success && data.data) {
+                // Correctly map question text to ID
+                for (const [question, questionId] of Object.entries(data.data)) {
+                    const questionNode = findOrCreateChild(categoryNode, question, 'question_selected', []);
+                    questionNode.data = { question_id: questionId };
+
+                    // Fetch answer with context
+                    const context = getContextFromNode(categoryNode);
+                    const params = new URLSearchParams({
+                        question_id: questionId,
+                        course: context.course || '',
+                        subcourse: context.subcourse || '',
+                        training_type: context.training_type || '',
+                        city: context.city || ''
+                    });
+                    const answerResponse = await fetch(`/api/answer?${params.toString()}`);
+                    const answerData = await answerResponse.json();
+                    if (answerData.success) {
+                        const answerNode = findOrCreateChild(questionNode, answerData.data, 'answer', answerData.options || []);
+                        updateTree(); // Update after adding answer
+
+                        // Handle subquestions recursively
+                        if (answerData.options && answerData.options.length > 0 && answerData.next_state !== "question_selected") {
+                            for (const subOption of answerData.options) {
+                                const subQuestionNode = findOrCreateChild(answerNode, subOption, answerData.next_state, []);
+                                await fetchSubAnswer(subQuestionNode, answerNode, context);
+                            }
+                        }
+                    }
+                }
+            }
+        } catch (error) {
+            console.log('Error fetching Q&A:', error);
+        }
+    }
+
+    // Fetch subquestion answers recursively
+    async function fetchSubAnswer(subQuestionNode, parentNode, context) {
+        try {
+            const params = new URLSearchParams({
+                state: subQuestionNode.state,
+                user_input: encodeURIComponent(subQuestionNode.label),
+                course: context.course || '',
+                subcourse: context.subcourse || '',
+                training_type: context.training_type || '',
+                city: context.city || ''
+            });
+            const response = await fetch(`/api/chatbot?${params.toString()}`);
+            const data = await response.json();
+            if (data.success) {
+                const answerNode = findOrCreateChild(subQuestionNode, data.response, data.next_state || 'answer', data.options || []);
+                updateTree(); // Update after adding subanswer
+
+                // Continue recursion if more options exist
+                if (data.options && data.options.length > 0 && data.next_state !== "question_selected") {
+                    for (const subSubOption of data.options) {
+                        const subSubQuestionNode = findOrCreateChild(answerNode, subSubOption, data.next_state, []);
+                        await fetchSubAnswer(subSubQuestionNode, subQuestionNode, context);
+                    }
+                }
+            }
+        } catch (error) {
+            console.log('Error fetching subanswer:', error);
+        }
+    }
+
     // Initialize the tree
     TreeModule.init = function(options = {}) {
         if (isInitialized) return;
@@ -135,6 +226,17 @@
         lastState = null;
         isInitialized = true;
         log('Tree initialized.');
+
+        // Fetch categories dynamically
+        fetch('/api/categories_dict')
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    categoryMap = data.data;
+                    log('Categories fetched:', categoryMap);
+                }
+            })
+            .catch(error => console.log('Error fetching categories:', error));
     };
 
     // Destroy the tree and clean up
@@ -225,6 +327,11 @@
                 selectedChild.options.forEach(opt => {
                     findOrCreateChild(selectedChild, opt, nextState, []);
                 });
+            }
+
+            // Check if this is a category node and fetch Q&A
+            if (categoryMap[selectedChild.label]) {
+                fetchAndAddQA(selectedChild);
             }
         }
 
@@ -402,7 +509,7 @@
             .attr('text-anchor', 'middle')
             .attr('dominant-baseline', 'middle')
             .text(d => d.data.label);
-        // Q&A double-click
+        // Q&A double-click (retained for manual triggering if needed)
         node.filter(d => d.data.options && d.data.options.length > 0 && (!d.children || d.children.length === 0))
             .on('dblclick', function(event, d) {
                 event.stopPropagation();
@@ -427,4 +534,4 @@
         }
     });
 
-})(window, document, window.d3); 
+})(window, document, window.d3);
