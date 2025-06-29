@@ -4,6 +4,7 @@ let currentState = 'start';
 let isRegistered = false;
 let allOptions = []; // Store all options for filtering
 let optionsDiv = null; // Reference to the options container
+let cityOptions = []; // Store city options for filtering
 
 // Function to add messages to the chat
 function addMessage(text, sender) {
@@ -85,7 +86,13 @@ function renderOptions(options, backOptions, nextState) {
             // Conversation Tree (removable): update tree after user selection
             if (window.TreeModule) {
                 console.log('[Chatbot] Attempting to call TreeModule.addNode with:', option, nextState);
-                window.TreeModule.addNode(option, nextState, allOptions, {});
+                window.TreeModule.addNode({
+                    label: option,
+                    previousState: nextState,
+                    nextState: nextState,
+                    options: [],
+                    previousLabel: ''
+                });
             }
             if (optionsDiv) {
                 optionsDiv.remove();
@@ -100,13 +107,51 @@ function renderOptions(options, backOptions, nextState) {
 
 // Function to filter options based on input
 function filterOptions(input) {
-    if (!allOptions.length || !optionsDiv) return;
-    const filteredOptions = allOptions.filter(option => 
-        option.toLowerCase().includes(input.toLowerCase())
-    );
-    const regularOptions = filteredOptions.filter(opt => !opt.startsWith('Back to') && opt !== 'Main page');
-    const backOptions = filteredOptions.filter(opt => opt.startsWith('Back to') || opt === 'Main page');
-    renderOptions(regularOptions, backOptions, currentState);
+    if (currentState === 'city_selected') {
+        if (!cityOptions || cityOptions.length === 0) return;
+        const filteredCities = input ? cityOptions.filter(city => 
+            city.toLowerCase().includes(input.toLowerCase())
+        ) : [];
+        displayCityOptions(filteredCities);
+    } else {
+        if (!allOptions.length || !optionsDiv) return;
+        const filteredOptions = allOptions.filter(option => 
+            option.toLowerCase().includes(input.toLowerCase())
+        );
+        const regularOptions = filteredOptions.filter(opt => !opt.startsWith('Back to') && opt !== 'Main page');
+        const backOptions = filteredOptions.filter(opt => opt.startsWith('Back to') || opt === 'Main page');
+        renderOptions(regularOptions, backOptions, currentState);
+    }
+}
+
+// Function to display city options as prompts
+function displayCityOptions(cities) {
+    const messagesContainer = document.getElementById('messagesContainer');
+    if (!messagesContainer) return;
+    if (optionsDiv) {
+        optionsDiv.remove();
+        optionsDiv = null;
+    }
+    if (cities.length === 0) return;
+    optionsDiv = document.createElement('div');
+    optionsDiv.classList.add('prompts-inline');
+    cities.forEach(city => {
+        const button = document.createElement('button');
+        button.textContent = city;
+        button.classList.add('option-btn');
+        button.addEventListener('click', () => {
+            addMessage(city, 'user');
+            fetchChatResponse(currentState, city);
+            if (optionsDiv) {
+                optionsDiv.remove();
+                optionsDiv = null;
+            }
+            document.getElementById('userInput').value = '';
+        });
+        optionsDiv.appendChild(button);
+    });
+    messagesContainer.appendChild(optionsDiv);
+    messagesContainer.scrollTop = messagesContainer.scrollHeight;
 }
 
 // Function to fetch chat responses from the server
@@ -139,7 +184,19 @@ function fetchChatResponse(state, input) {
                 options: data.options || []
             });
         }
-        // Ensure options and back_options are arrays
+        // Fetch cities when entering city_selected state
+        if (currentState === 'city_selected') {
+            fetch('/api/all_cities')
+                .then(response => response.json())
+                .then(cityData => {
+                    if (cityData.success) {
+                        cityOptions = cityData.data;
+                    } else {
+                        console.error('Failed to fetch cities:', cityData.error);
+                    }
+                })
+                .catch(error => console.error('Error fetching cities:', error));
+        }
         displayOptions(data.options || [], data.next_state, data.back_options || []);
     })
     .catch(error => {

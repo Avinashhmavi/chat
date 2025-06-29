@@ -960,6 +960,18 @@ async def get_answer(question_id: int, course: str, subcourse: str, training_typ
         logger.error(f"Error fetching answer for question {question_id}: {e}")
         return {"success": False, "error": f"Failed to fetch answer: {str(e)}"}
 
+@app.get("/api/all_cities")
+async def get_all_cities():
+    try:
+        query = "SELECT DISTINCT city FROM mdl_city_state_centerslist"
+        result = await db1.query(query)
+        cities = [row['city'] for row in result]
+        # logger.debug(f"Fetched all cities: {cities}")
+        return {"success": True, "data": cities}
+    except Exception as e:
+        logger.error(f"Error fetching all cities: {e}")
+        return {"success": False, "error": "Failed to fetch cities"}
+
 # Mount frontend folder to serve static files
 app.mount("/", StaticFiles(directory="../frontend", html=True), name="frontend")
 
