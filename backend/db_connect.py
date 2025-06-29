@@ -337,6 +337,35 @@ class MySQLDB:
         except Exception as e:
             logger.error(f"Error searching static answers: {e}")
             return []
+
+    async def search_course_prices(self, query: str):
+        """
+        Search for course prices/fees based on the query
+        """
+        search_query = """
+            SELECT 
+                cd.Coursesubvariant as course_variant,
+                cd.Price,
+                cd.OfferPrice,
+                c.coursename,
+                c.title
+            FROM coursedetails cd
+            JOIN courses c ON cd.Courseid = c.id
+            WHERE 
+                cd.Coursesubvariant LIKE %s 
+                OR c.coursename LIKE %s
+                OR c.title LIKE %s
+                OR cd.Price LIKE %s
+                OR cd.OfferPrice LIKE %s
+            ORDER BY cd.Coursesubvariant
+            LIMIT 10
+        """
+        search_term = f"%{query}%"
+        try:
+            return await self.query(search_query, (search_term, search_term, search_term, search_term, search_term))
+        except Exception as e:
+            logger.error(f"Error searching course prices: {e}")
+            return []
         
     async def close(self):
         if self.pool:

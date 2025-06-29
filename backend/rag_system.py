@@ -9,36 +9,75 @@ logger = logging.getLogger(__name__)
 class RAGSystem:
     def __init__(self, db: MySQLDB):
         self.db = db
-        self.openai_client = openai.OpenAI(api_key=OPENAI_API_KEY)
+        if OPENAI_API_KEY:
+            self.openai_client = openai.OpenAI(api_key=OPENAI_API_KEY)
+        else:
+            logger.warning("OpenAI API key not found. RAG system will not work.")
+            self.openai_client = None
         
     async def search_relevant_context(self, query: str) -> List[Dict[str, Any]]:
         """
-        Search for relevant context from the database based on the user query
+        Search for relevant context from the database based on the user query using both full query and keyword-based search.
         """
         try:
-            # Search in categories and questions
+            # 1. Try full query search
             categories_data = await self.db.search_categories_and_questions(query)
-            
-            # Search in exam_info
             exam_data = await self.db.search_exam_info(query)
-            
-            # Search in static_answers
             answers_data = await self.db.search_static_answers(query)
-            
-            # Combine all relevant data
             context_data = []
-            
             if categories_data:
                 context_data.extend(categories_data)
-            
             if exam_data:
                 context_data.extend(exam_data)
-                
             if answers_data:
                 context_data.extend(answers_data)
             
-            return context_data[:5]  # Limit to top 5 most relevant results
+            # 2. Check if query is about fees/prices and search for course prices
+            fee_keywords = ['fee', 'fees', 'price', 'cost', 'offer', 'payment', 'amount', '₹', 'rs', 'rupees']
+            query_lower = query.lower()
+            price_data = []
+            if any(keyword in query_lower for keyword in fee_keywords):
+                price_data = await self.db.search_course_prices(query)
+                if price_data:
+                    context_data.extend(price_data)
             
+            # 3. If not enough context, try keyword-based search
+            if len(context_data) < 5:
+                keywords = [word for word in query.split() if len(word) > 2]
+                for kw in keywords:
+                    cat_kw = await self.db.search_categories_and_questions(kw)
+                    exam_kw = await self.db.search_exam_info(kw)
+                    ans_kw = await self.db.search_static_answers(kw)
+                    if cat_kw:
+                        context_data.extend(cat_kw)
+                    if exam_kw:
+                        context_data.extend(exam_kw)
+                    if ans_kw:
+                        context_data.extend(ans_kw)
+                    
+                    # Also search for prices with keywords
+                    if any(keyword in kw.lower() for keyword in fee_keywords):
+                        price_kw = await self.db.search_course_prices(kw)
+                        if price_kw:
+                            context_data.extend(price_kw)
+            
+            # 4. Deduplicate context (optional, based on 'question_text' or 'answer_text')
+            seen = set()
+            unique_context = []
+            for item in context_data:
+                key = tuple(sorted(item.items()))
+                if key not in seen:
+                    unique_context.append(item)
+                    seen.add(key)
+            
+            # 5. Separate price/fee info from other context
+            price_items = [item for item in unique_context if item.get('Price') or item.get('OfferPrice') or item.get('course_variant')]
+            other_items = [item for item in unique_context if not (item.get('Price') or item.get('OfferPrice') or item.get('course_variant'))]
+            
+            # 6. Return all price/fee info + up to 5 other context items
+            final_context = price_items + other_items[:5]
+            print(f"[RAG] Final context_data: {final_context}")
+            return final_context
         except Exception as e:
             logger.error(f"Error searching context: {e}")
             return []
@@ -48,6 +87,9 @@ class RAGSystem:
         Generate a response using RAG (Retrieval-Augmented Generation)
         """
         try:
+            if not self.openai_client:
+                return "OpenAI API key is not configured. Please set the OPENAI_API_KEY environment variable to use AI chat features."
+            
             # Search for relevant context
             relevant_context = await self.search_relevant_context(query)
             
@@ -61,8 +103,13 @@ class RAGSystem:
             system_prompt = """You are TINA (TIME Instant Neural Assistant), a helpful assistant for T.I.M.E. (Triumphant Institute of Management Education). 
             You help students with information about courses, exams, admissions, and general queries.
             
-            Use the provided context to answer questions accurately. If the context doesn't contain enough information, 
-            politely ask the user to clarify or provide more specific information.
+            IMPORTANT: When the context contains "=== COURSE PRICE INFORMATION ===" section, you MUST use that exact price information to answer fee/price questions. 
+            Do not give generic responses when specific price data is available.
+            
+            Use the provided context to answer questions accurately. If the context contains course fee/price information, 
+            provide the exact amounts including both regular price and offer price if available. Format prices with the ₹ symbol.
+            
+            If the context doesn't contain enough information, politely ask the user to clarify or provide more specific information.
             
             Always be helpful, professional, and encouraging. If you don't know something, say so rather than making up information."""
             
@@ -101,21 +148,53 @@ class RAGSystem:
             if user_context.get('subcourse'):
                 context_parts.append(f"User's selected exam year: {user_context['subcourse']}")
         
-        # Add relevant context data
+        # Always scan the full relevant_context for price/fee info
+        price_info_found = []
+        other_context = []
+        
         for item in relevant_context:
-            if item.get('category_name'):
-                context_parts.append(f"Category: {item['category_name']}")
-            if item.get('question_text'):
-                context_parts.append(f"Question: {item['question_text']}")
-            if item.get('answer_text'):
-                context_parts.append(f"Answer: {item['answer_text']}")
-            if item.get('course'):
-                context_parts.append(f"Course: {item['course']}")
-            if item.get('eligibility_criteria'):
-                context_parts.append(f"Eligibility: {item['eligibility_criteria']}")
-            if item.get('exam_dates'):
-                context_parts.append(f"Exam Dates: {item['exam_dates']}")
-            if item.get('registration_process'):
-                context_parts.append(f"Registration: {item['registration_process']}")
+            # Check if this item contains price information
+            if item.get('Price') or item.get('OfferPrice') or item.get('course_variant'):
+                price_info = []
+                if item.get('course_variant'):
+                    price_info.append(f"Course Variant: {item['course_variant']}")
+                if item.get('Price'):
+                    price_info.append(f"Regular Price: ₹{item['Price']}")
+                if item.get('OfferPrice'):
+                    price_info.append(f"Offer Price: ₹{item['OfferPrice']}")
+                if item.get('coursename'):
+                    price_info.append(f"Course Name: {item['coursename']}")
+                if item.get('title'):
+                    price_info.append(f"Course Title: {item['title']}")
+                if price_info:
+                    price_info_found.append(" | ".join(price_info))
+            else:
+                # Other context information
+                if item.get('category_name'):
+                    other_context.append(f"Category: {item['category_name']}")
+                if item.get('question_text'):
+                    other_context.append(f"Question: {item['question_text']}")
+                if item.get('answer_text'):
+                    other_context.append(f"Answer: {item['answer_text']}")
+                if item.get('course'):
+                    other_context.append(f"Course: {item['course']}")
+                if item.get('eligibility_criteria'):
+                    other_context.append(f"Eligibility: {item['eligibility_criteria']}")
+                if item.get('exam_dates'):
+                    other_context.append(f"Exam Dates: {item['exam_dates']}")
+                if item.get('registration_process'):
+                    other_context.append(f"Registration: {item['registration_process']}")
+        
+        # Add price information first, then other context
+        if price_info_found:
+            context_parts.append("=== COURSE PRICE INFORMATION ===")
+            context_parts.extend(price_info_found)
+            context_parts.append("=== END PRICE INFORMATION ===")
+            context_parts.append("")
+        
+        if other_context:
+            context_parts.append("=== OTHER RELEVANT INFORMATION ===")
+            context_parts.extend(other_context[:10])  # Limit other context to avoid token limits
+            context_parts.append("=== END OTHER INFORMATION ===")
         
         return "\n".join(context_parts) 

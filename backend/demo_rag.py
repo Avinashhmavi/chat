@@ -14,20 +14,41 @@ if not os.getenv("OPENAI_API_KEY"):
     print("❌ OPENAI_API_KEY not found in environment variables")
     print("Please set your OpenAI API key in the .env file")
     print("You can get one from: https://platform.openai.com/api-keys")
-    exit(1)
+    print("For demo purposes, the script will show sample responses without OpenAI.")
+    print("")
 
 import openai
 from config import OPENAI_API_KEY, OPENAI_MODEL
 
 class DemoRAGSystem:
     def __init__(self):
-        self.openai_client = openai.OpenAI(api_key=OPENAI_API_KEY)
+        if OPENAI_API_KEY:
+            self.openai_client = openai.OpenAI(api_key=OPENAI_API_KEY)
+        else:
+            self.openai_client = None
         
     def generate_demo_response(self, query: str) -> str:
         """
         Generate a demo response using OpenAI without database context
         """
         try:
+            if not self.openai_client:
+                # Return sample responses when OpenAI is not available
+                sample_responses = {
+                    "What are the eligibility criteria for CAT?": "The Common Admission Test (CAT) typically requires a Bachelor's degree with at least 50% marks (45% for SC/ST/PwD). Final year students can also apply. The exam is conducted by IIMs for MBA admissions.",
+                    "Tell me about MBA advantages": "An MBA offers several advantages: career advancement, higher salary potential, leadership skill development, networking opportunities, specialization options, and entrepreneurial skills. It opens doors to management roles and global opportunities.",
+                    "What are the exam dates for GMAT?": "GMAT is a computer-adaptive test available year-round at various test centers. You can choose your preferred date and time based on availability. Registration is recommended well in advance.",
+                    "How should I prepare for MBA entrance exams?": "Prepare by understanding the exam format, creating a study plan, using quality study materials, practicing mock tests, focusing on weak areas, staying updated with current affairs, and maintaining a healthy lifestyle.",
+                    "What are the benefits of doing an MBA?": "MBA benefits include career advancement, higher earning potential, skill development, networking opportunities, global exposure, and preparation for leadership roles in business."
+                }
+                
+                # Find the best matching question
+                for sample_q, sample_a in sample_responses.items():
+                    if any(word in query.lower() for word in sample_q.lower().split()):
+                        return sample_a
+                
+                return "I can help you with questions about MBA entrance exams, CAT, GMAT, MBA advantages, and exam preparation. Please ask a specific question about these topics."
+            
             # Create system prompt for T.I.M.E. chatbot
             system_prompt = """You are TINA (TIME Instant Neural Assistant), a helpful assistant for T.I.M.E. (Triumphant Institute of Management Education). 
             You help students with information about courses, exams, admissions, and general queries.

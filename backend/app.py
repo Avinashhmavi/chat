@@ -37,6 +37,11 @@ async def read_root():
     """Serve the main HTML file"""
     return FileResponse("../frontend/index.html")
 
+@app.get("/test")
+async def test_endpoint():
+    """Simple test endpoint"""
+    return {"message": "Server is running!", "demo_mode": getattr(app.state, 'demo_mode', False)}
+
 class RegisterRequest(BaseModel):
     name: str
     mobile: str
@@ -691,6 +696,8 @@ async def rag_chat(data: RAGChatRequest):
         user_input = data.message.strip()
         user_id = data.user_id
         
+        logger.info(f"RAG chat request received: {user_input[:50]}... from user {user_id}")
+        
         if not user_input:
             return {
                 "response": "Please enter your question.",
@@ -699,12 +706,14 @@ async def rag_chat(data: RAGChatRequest):
         
         # Check if we're in demo mode
         if hasattr(app.state, 'demo_mode') and app.state.demo_mode:
+            logger.info("Using demo RAG system")
             # Use demo RAG system without database
             from demo_rag import DemoRAGSystem
             demo_rag = DemoRAGSystem()
             response = demo_rag.generate_demo_response(user_input)
             logger.info(f"Demo RAG response generated for user {user_id}: {response[:100]}...")
         else:
+            logger.info("Using full RAG system with database")
             # Get user context if available
             user_context = chatbot.get_context(user_id) if user_id else {}
             
@@ -720,7 +729,7 @@ async def rag_chat(data: RAGChatRequest):
     except Exception as e:
         logger.error(f"Error in RAG chat endpoint: {str(e)}")
         return {
-            "response": "I apologize, but I'm having trouble processing your request right now. Please try again later.",
+            "response": f"I apologize, but I'm having trouble processing your request right now. Error: {str(e)}",
             "type": "rag"
         }
 
