@@ -247,6 +247,96 @@ class MySQLDB:
         except Exception as e:
             logger.error(f"Error logging query: {e}")
             raise
+
+    async def search_categories_and_questions(self, query: str):
+        """
+        Search for relevant categories and questions based on the query
+        """
+        search_query = """
+            SELECT 
+                c.name as category_name,
+                q.question_text,
+                sa.answer_text
+            FROM categories c
+            JOIN questions q ON c.id = q.category_id
+            LEFT JOIN static_answers sa ON q.id = sa.question_id
+            WHERE c.is_active = TRUE 
+            AND q.is_active = TRUE
+            AND (
+                c.name LIKE %s 
+                OR q.question_text LIKE %s 
+                OR sa.answer_text LIKE %s
+            )
+            ORDER BY c.display_order, q.display_order
+            LIMIT 10
+        """
+        search_term = f"%{query}%"
+        try:
+            return await self.query(search_query, (search_term, search_term, search_term))
+        except Exception as e:
+            logger.error(f"Error searching categories and questions: {e}")
+            return []
+
+    async def search_exam_info(self, query: str):
+        """
+        Search for relevant exam information based on the query
+        """
+        search_query = """
+            SELECT 
+                course,
+                eligibility_criteria,
+                exam_dates,
+                registration_process,
+                score_validity,
+                top_b_schools,
+                mba_advantages,
+                selection_process,
+                attempts_allowed
+            FROM exam_info
+            WHERE 
+                course LIKE %s 
+                OR eligibility_criteria LIKE %s 
+                OR exam_dates LIKE %s
+                OR registration_process LIKE %s
+                OR score_validity LIKE %s
+                OR top_b_schools LIKE %s
+                OR mba_advantages LIKE %s
+                OR selection_process LIKE %s
+                OR attempts_allowed LIKE %s
+            LIMIT 5
+        """
+        search_term = f"%{query}%"
+        try:
+            return await self.query(search_query, (search_term, search_term, search_term, search_term, search_term, search_term, search_term, search_term, search_term))
+        except Exception as e:
+            logger.error(f"Error searching exam info: {e}")
+            return []
+
+    async def search_static_answers(self, query: str):
+        """
+        Search for relevant static answers based on the query
+        """
+        search_query = """
+            SELECT 
+                sa.answer_text,
+                q.question_text,
+                c.name as category_name
+            FROM static_answers sa
+            JOIN questions q ON sa.question_id = q.id
+            JOIN categories c ON q.category_id = c.id
+            WHERE 
+                sa.answer_text LIKE %s 
+                OR q.question_text LIKE %s
+                OR c.name LIKE %s
+            ORDER BY c.display_order, q.display_order
+            LIMIT 5
+        """
+        search_term = f"%{query}%"
+        try:
+            return await self.query(search_query, (search_term, search_term, search_term))
+        except Exception as e:
+            logger.error(f"Error searching static answers: {e}")
+            return []
         
     async def close(self):
         if self.pool:

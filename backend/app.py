@@ -1,12 +1,15 @@
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
 from pydantic import BaseModel
 from config import MYSQL_CREDENTIALS
 from db_connect import MySQLDB
 from chatbot_engine import ChatbotEngine
+from rag_system import RAGSystem
 import logging
 import random
+import os
 
 app = FastAPI()
 
@@ -16,14 +19,23 @@ logger = logging.getLogger(__name__)
 # CORS configuration
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5000"],
+    allow_origins=["*"],  # Allow all origins for testing
     allow_credentials=True,
     allow_methods=["GET", "POST"],
     allow_headers=["Content-Type"],
 )
 
+# Mount static files
+app.mount("/static", StaticFiles(directory="../frontend"), name="static")
+
 db1 = MySQLDB(MYSQL_CREDENTIALS)
 chatbot = ChatbotEngine(db1)
+rag_system = RAGSystem(db1)
+
+@app.get("/")
+async def read_root():
+    """Serve the main HTML file"""
+    return FileResponse("../frontend/index.html")
 
 class RegisterRequest(BaseModel):
     name: str
@@ -36,6 +48,10 @@ class VerifyOTPRequest(BaseModel):
 class ChatRequest(BaseModel):
     state: str = "start"
     input: str = ""
+    user_id: int | None = None
+
+class RAGChatRequest(BaseModel):
+    message: str
     user_id: int | None = None
 
 @app.post("/register")
@@ -232,7 +248,7 @@ async def chat(data: ChatRequest):
             if not category_options.get("data"):
                 logger.error("No categories found")
                 return {
-                    "response": "No categories available. Let’s start over.",
+                    "response": "No categories available. Let's start over.",
                     "options": [],
                     "next_state": "start"
                 }
@@ -653,7 +669,7 @@ async def chat(data: ChatRequest):
         try:
             category_options = await call_db_api("/api/categories")
             return {
-                "response": "Sorry, something went wrong. Let’s get back on track.",
+                "response": "Sorry, something went wrong. Let's get back on track.",
                 "options": category_options.get("data", []),
                 "next_state": "category_selected",
                 "back_options": ["Back to variants", "Main page"]
@@ -665,6 +681,48 @@ async def chat(data: ChatRequest):
                 "options": [],
                 "next_state": "start"
             }
+
+@app.post("/rag-chat")
+async def rag_chat(data: RAGChatRequest):
+    """
+    RAG-based chat endpoint that uses OpenAI to generate responses based on database context
+    """
+    try:
+        user_input = data.message.strip()
+        user_id = data.user_id
+        
+        if not user_input:
+            return {
+                "response": "Please enter your question.",
+                "type": "rag"
+            }
+        
+        # Check if we're in demo mode
+        if hasattr(app.state, 'demo_mode') and app.state.demo_mode:
+            # Use demo RAG system without database
+            from demo_rag import DemoRAGSystem
+            demo_rag = DemoRAGSystem()
+            response = demo_rag.generate_demo_response(user_input)
+            logger.info(f"Demo RAG response generated for user {user_id}: {response[:100]}...")
+        else:
+            # Get user context if available
+            user_context = chatbot.get_context(user_id) if user_id else {}
+            
+            # Generate RAG response with database context
+            response = await rag_system.generate_rag_response(user_input, user_context)
+            logger.info(f"RAG response generated for user {user_id}: {response[:100]}...")
+        
+        return {
+            "response": response,
+            "type": "rag"
+        }
+        
+    except Exception as e:
+        logger.error(f"Error in RAG chat endpoint: {str(e)}")
+        return {
+            "response": "I apologize, but I'm having trouble processing your request right now. Please try again later.",
+            "type": "rag"
+        }
 
 # Helper function to call internal db_api routes
 async def call_db_api(endpoint, params=None):
@@ -714,11 +772,21 @@ async def call_db_api(endpoint, params=None):
 
 @app.on_event("startup")
 async def startup_event():
-    await db1.init_pool()
+    try:
+        await db1.init_pool()
+        logger.info("Database connection established successfully")
+        app.state.demo_mode = False
+    except Exception as e:
+        logger.warning(f"Database connection failed: {e}")
+        logger.warning("Running in demo mode - database features will be limited")
+        app.state.demo_mode = True
 
 @app.on_event("shutdown")
 async def shutdown_event():
-    await db1.close()
+    try:
+        await db1.close()
+    except:
+        pass  # Ignore errors during shutdown
 
 @app.get("/api/cities")
 async def get_cities():
