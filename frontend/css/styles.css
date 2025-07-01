@@ -536,3 +536,41 @@ p {
 #tree-center-btn svg {
   display: block;
 }
+/* Chat Mode Toggle Styles */
+.btn-mode-toggle {
+    background: none;
+    border: none;
+    cursor: pointer;
+    padding: 5px 10px;
+    border-radius: 15px;
+    transition: all 0.3s ease;
+    font-size: 11px;
+    font-weight: 500;
+}
+
+.mode-indicator {
+    padding: 4px 8px;
+    border-radius: 12px;
+    font-size: 10px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.mode-indicator.flow-mode {
+    background-color: rgba(255, 255, 255, 0.2);
+    color: white;
+}
+
+.mode-indicator.rag-mode {
+    background-color: var(--secondary-color);
+    color: var(--primary-color);
+}
+
+.btn-mode-toggle:hover .mode-indicator.flow-mode {
+    background-color: rgba(255, 255, 255, 0.3);
+}
+
+.btn-mode-toggle:hover .mode-indicator.rag-mode {
+    background-color: var(--secondary-light);
+}

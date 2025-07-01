@@ -5,3 +5,8 @@ uvicorn
 aiomysql
 httpx
 cryptography
+openai
+langchain
+langchain-openai
+faiss-cpu
+sentence-transformers
