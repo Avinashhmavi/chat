@@ -83,7 +83,7 @@ INSERT INTO static_answers (question_id, answer_text) VALUES
     (33, 'No, we dont have hostel facility or we have tie-up with Hostels'),
     (34, 'Wi-Fi or internet facility is not available'),
     (35, 'Yes we have telegram channel support: TIME4CAT\nTIME4CAT is our app and www.time4education.com is our website'),
-    (37, 'Yes'),
+    (37, '<p>Yes. For more details, Kindly check this link:</p><a href="https://www.time4education.com/CAT-MBA" target=_blank>TIME4education</a>'),
     (36, "• Login Activity Insights: Tracks last login, alerts students on pending tests/videos, helps mentors identify inactive learners.
 • Smart Resume: Resumes videos/tests from last activity across devices.
 • Photo-Based Identity Verification: Captures student photo at first login; supports exam proctoring.
@@ -108,9 +108,9 @@ INSERT INTO subcourses (course, subcourse) VALUES
 INSERT INTO exam_info (course, eligibility_criteria, exam_dates, registration_process, score_validity, top_b_schools, mba_advantages, selection_process, attempts_allowed) VALUES
     ('CAT', 'For CAT as per the notification any Graduate with 50% marks or SC/ST with 45% marks are eligible',
             'CAT exam will be held on last Sunday of November every year',
-            'You can register for the CAT exam by visiting their official website',
+            '<p>You can register for the CAT exam by visiting their official website. For more details kindly check this link:</p><a href="https://www.time4education.com/local/articlecms/notifications.php?course=CAT/MBA" target=_blank>Exam Notifications</a>',
             'Validity of CAT score is 1 year',
-            'To be provided',
-            'To be provided',
-            'To be provided',
+            '<p>You can checkout the list of all the Top B-schools here:</p><a href="https://www.time4education.com/CAT-MBA/Choosing-the-right-B-school/TIME-B-School-Categorisation" target=_blank>List of Top B-Schools</a>',
+            '<p>Information about MBA:</p><a href="https://www.time4education.com/CAT-MBA/About-MBA" target=_blank>About MBA</a>',
+            '<p>You can understand the way selecting a B-school here:</p><a href="https://www.time4education.com/CAT-MBA/Choosing-the-right-B-school" target=_blank>Choosing the right B school</a>',
             'There is no Age / Attempts limit for CAT Exam');
