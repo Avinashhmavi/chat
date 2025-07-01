@@ -383,23 +383,49 @@
         return node;
     }
 
+    // Helper to recursively clear all descendants of a node
+    function clearAllDescendants(node) {
+        if (node.children && node.children.length > 0) {
+            node.children.forEach(child => clearAllDescendants(child));
+            node.children = [];
+        }
+    }
+
     // Utility: Ensure the full path exists in the tree, creating missing nodes as needed
     function ensurePathExists(root, path, labels, states, optionsArr, context) {
         let node = root;
         for (let i = 1; i < path.length; i++) {
             if (!node.children) node.children = [];
-            // Try to get label from parent's options if available
+            // --- Robust label resolution ---
             let label = labels[i];
-            if (!label && node.options && Array.isArray(node.options)) {
+            // Try to get label from parent's options if available
+            if ((!label || label.startsWith('Node ')) && node.options && Array.isArray(node.options)) {
                 if (typeof node.options[0] === 'string') {
-                    label = node.options.find(opt => makeNodeId(opt) === path[i]) || '';
+                    label = node.options.find(opt => makeNodeId(opt) === path[i]) || label;
                 }
                 if (typeof node.options[0] === 'object') {
                     let found = node.options.find(opt => makeNodeId(opt.label) === path[i] || opt.id === path[i]);
                     if (found) label = found.label;
                 }
             }
-            if (!label && i === path.length - 1 && context && context.label) {
+            // If still not found, check all children of all siblings for a matching id/label
+            if ((!label || label.startsWith('Node ')) && node.children && node.children.length > 0) {
+                for (let sib of node.children) {
+                    if (sib.id === path[i]) {
+                        label = sib.label;
+                        break;
+                    }
+                    if (sib.children && sib.children.length > 0) {
+                        let found = sib.children.find(child => child.id === path[i]);
+                        if (found) {
+                            label = found.label;
+                            break;
+                        }
+                    }
+                }
+            }
+            // Always use the label from context for the last node
+            if (i === path.length - 1 && context && context.label) {
                 label = context.label;
             }
             let state = states[i] || (context && context.nextState) || '';
@@ -419,9 +445,15 @@
                 if (state && child.state !== state) child.state = state;
                 if (label && child.label !== label) child.label = label;
             }
-            // Mark all children as not chosen, except the one on the path
-            node.children.forEach(c => c.isChosen = (c.id === path[i]));
-            // DO NOT prune children here!
+            // --- Prune siblings at this level ---
+            node.children.forEach(sib => {
+                if (sib.id !== path[i]) {
+                    sib.isChosen = false;
+                    clearAllDescendants(sib);
+                } else {
+                    sib.isChosen = true;
+                }
+            });
             node = child;
         }
         return node;
@@ -468,6 +500,16 @@
                 log('Error: No path provided in context.');
                 return;
             }
+            // Remove all deeper branches if the new path is shorter than the previous one
+            if (window._lastTreePath && window._lastTreePath.length > path.length) {
+                let node = treeData;
+                for (let i = 1; i < path.length; i++) {
+                    node = node.children && node.children.find(child => child.id === path[i]);
+                    if (!node) break;
+                }
+                if (node && node.children) node.children = [];
+            }
+            window._lastTreePath = path.slice();
             // Build up the path of labels, states, and options for each node in the path
             let labels = [];
             let states = [];
@@ -489,14 +531,8 @@
                     optionsArr.push([]);
                 }
             }
-            // Ensure the full path exists
+            // Ensure the full path exists and prune siblings at every level
             let selectedNode = ensurePathExists(treeData, path, labels, states, optionsArr, context);
-            // Mark the active path as chosen
-            let node = treeData;
-            for (let i = 1; i < path.length; i++) {
-                node.children.forEach(c => c.isChosen = (c.id === path[i]));
-                node = node.children.find(c => c.id === path[i]);
-            }
             // At the selected node, clear its children and add new children for options
             if (selectedNode) {
                 selectedNode.children = [];
@@ -507,7 +543,6 @@
                 }
                 selectedNode.isChosen = true;
                 nodeId = selectedNode.id;
-                // Fetch Q&A if needed
                 if (categoryMap[selectedNode.label]) {
                     fetchAndAddQA(selectedNode);
                 }
