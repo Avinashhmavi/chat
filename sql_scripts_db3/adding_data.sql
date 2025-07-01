@@ -54,7 +54,7 @@ INSERT INTO questions (category_id, question_text, display_order, source_type, s
     (6, 'Accommodation/hostel tie-ups?', 4, 'STATIC', NULL),
     (6, 'Center amenities (Wi-Fi etc.)?', 5, 'STATIC', NULL),
     -- App / Online Portal
-    (7, 'Do you have an app or portal / WhatsApp / Telegram support?', 1, 'STATIC', NULL),
+    (7, 'Do you have an app or portal / WhatsApp / Telegram support?', 1, 'DB', 'courses'),
     (7, 'What are its features?', 2, 'STATIC', NULL),
     (7, 'Access to live & recorded sessions?', 3, 'STATIC', NULL),
     -- Exam & Other Info
@@ -82,21 +82,20 @@ INSERT INTO static_answers (question_id, answer_text) VALUES
     (31, 'We have library facility available. Lab facility available to take invigilated Mock Tests'),
     (33, 'No, we dont have hostel facility or we have tie-up with Hostels'),
     (34, 'Wi-Fi or internet facility is not available'),
-    (35, 'Yes we have telegram channel support: TIME4CAT\nTIME4CAT is our app and www.time4education.com is our website'),
     (37, '<p>Yes. For more details, Kindly check this link:</p><a href="https://www.time4education.com/CAT-MBA" target=_blank>TIME4education</a>'),
-    (36, "• Login Activity Insights: Tracks last login, alerts students on pending tests/videos, helps mentors identify inactive learners.
-• Smart Resume: Resumes videos/tests from last activity across devices.
-• Photo-Based Identity Verification: Captures student photo at first login; supports exam proctoring.
-• Intelligent Attendance Monitoring: Geofenced & event-based attendance tracking (live, recorded, classroom).
-• Mentorship Engine: Auto-reminders for missed classes, personalized content suggestions.
-• Performance Analytics: Sub-topic level analysis, intelligent recommendations, leaderboard rankings.
-• Smart Action Plans: Auto-generated revision plans based on weak areas.
-• Bookmarking & Quick Contact: Tag PDFs/videos, add comments, raise doubts via chatbot or faculty.
-• Free SHP Access: Limited dashboard access with targeted upgrade prompts.
-• Secure Payments: In-app payment gateway (UPI, cards, wallets).
-• Referral Program: Discounts for both referrers and new users.
-• AI Learning Tools: Video summarization, transcript-based tests, daily vocab tests.
-• Unified Platform: Single app for all courses (Android/iOS); no-code admin panel for content & ops.");
+    (36, "• <b>Login Activity Insights:</b> Tracks last login, alerts students on pending tests/videos, helps mentors identify inactive learners.
+• <b>Smart Resume:</b> Resumes videos/tests from last activity across devices.
+• <b>Photo-Based Identity Verification:</b> Captures student photo at first login; supports exam proctoring.
+• <b>Intelligent Attendance Monitoring:</b> Geofenced & event-based attendance tracking (live, recorded, classroom).
+• <b>Mentorship Engine:</b> Auto-reminders for missed classes, personalized content suggestions.
+• <b>Performance Analytics:</b> Sub-topic level analysis, intelligent recommendations, leaderboard rankings.
+• <b>Smart Action Plans:</b> Auto-generated revision plans based on weak areas.
+• <b>Bookmarking & Quick Contact:</b> Tag PDFs/videos, add comments, raise doubts via chatbot or faculty.
+• <b>Free SHP Access:</b> Limited dashboard access with targeted upgrade prompts.
+• <b>Secure Payments:</b> In-app payment gateway (UPI, cards, wallets).
+• <b>Referral Program:</b> Discounts for both referrers and new users.
+• <b>AI Learning Tools:</b> Video summarization, transcript-based tests, daily vocab tests.
+• <b>Unified Platform:</b> Single app for all courses (Android/iOS); no-code admin panel for content & ops.");
 
 -- Insert subcourses
 INSERT INTO subcourses (course, subcourse) VALUES
