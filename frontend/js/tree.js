@@ -428,6 +428,13 @@
             if (i === path.length - 1 && context && context.label) {
                 label = context.label;
             }
+            // If still not found, try to get label from parent's options (object type)
+            if ((!label || label.startsWith('Node ')) && node.options && Array.isArray(node.options)) {
+                if (typeof node.options[0] === 'object') {
+                    let found = node.options.find(opt => opt.id === path[i]);
+                    if (found) label = found.label;
+                }
+            }
             let state = states[i] || (context && context.nextState) || '';
             let child = node.children.find(child => child.id === path[i]);
             if (!child) {
@@ -446,14 +453,26 @@
                 if (label && child.label !== label) child.label = label;
             }
             // --- Prune siblings at this level ---
-            node.children.forEach(sib => {
-                if (sib.id !== path[i]) {
-                    sib.isChosen = false;
-                    clearAllDescendants(sib);
-                } else {
-                    sib.isChosen = true;
-                }
-            });
+            // Special handling for category level: do not remove category siblings, only collapse their descendants
+            if (state === 'category_selected' && node.children.length > 1) {
+                node.children.forEach(sib => {
+                    if (sib.id !== path[i]) {
+                        sib.isChosen = false;
+                        clearAllDescendants(sib);
+                    } else {
+                        sib.isChosen = true;
+                    }
+                });
+            } else {
+                node.children.forEach(sib => {
+                    if (sib.id !== path[i]) {
+                        sib.isChosen = false;
+                        clearAllDescendants(sib);
+                    } else {
+                        sib.isChosen = true;
+                    }
+                });
+            }
             node = child;
         }
         return node;
@@ -491,6 +510,12 @@
                     children: []
                 };
                 nodeId = treeData.id;
+                // Immediately add subcourse options as children
+                if (options && Array.isArray(options)) {
+                    options.forEach(opt => {
+                        findOrCreateChild(treeData, opt, nextState, [], null);
+                    });
+                }
             } else {
                 log('Tree start deferred. Previous state was not "course_selected".');
                 return;
