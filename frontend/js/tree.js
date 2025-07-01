@@ -663,6 +663,7 @@
         if (!treeData) return;
         g.selectAll('*').remove();
         let root = d3.hierarchy(treeData);
+        window.lastD3Root = root; // Store the latest D3 root for centering fallback
         
         // Pre-calculate node dimensions for all nodes
         root.eachAfter(node => {
@@ -908,6 +909,7 @@
             });
 
         log('Tree rendered with robust global overlap prevention.');
+        createCenterViewButton();
     }
 
     // Utility: Check if two nodes overlap
@@ -976,6 +978,59 @@
             
             log('Adjusted SVG width to:', requiredWidth, 'for tree width:', treeWidth);
         }
+    }
+
+    function createCenterViewButton() {
+        if (document.getElementById('tree-center-btn')) return;
+        const btn = document.createElement('button');
+        btn.id = 'tree-center-btn';
+        btn.title = 'Center tree on selected node';
+        btn.innerHTML = '<svg width="24" height="24" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" stroke="#333" stroke-width="2" fill="none"/><line x1="12" y1="6" x2="12" y2="18" stroke="#333" stroke-width="2"/><line x1="6" y1="12" x2="18" y2="12" stroke="#333" stroke-width="2"/></svg>';
+        btn.style.position = 'absolute';
+        btn.style.bottom = '24px';
+        btn.style.right = '24px';
+        btn.style.zIndex = 10;
+        btn.style.background = '#fff';
+        btn.style.border = '1px solid #bbb';
+        btn.style.borderRadius = '50%';
+        btn.style.width = '48px';
+        btn.style.height = '48px';
+        btn.style.boxShadow = '0 2px 8px rgba(0,0,0,0.15)';
+        btn.style.cursor = 'pointer';
+        btn.style.display = 'flex';
+        btn.style.alignItems = 'center';
+        btn.style.justifyContent = 'center';
+        btn.style.transition = 'box-shadow 0.2s';
+        btn.onmouseenter = () => btn.style.boxShadow = '0 4px 16px rgba(0,0,0,0.25)';
+        btn.onmouseleave = () => btn.style.boxShadow = '0 2px 8px rgba(0,0,0,0.15)';
+        btn.onclick = function() {
+            if (!treeData || !g || !svg) return;
+            let root = d3.hierarchy(treeData);
+            let currentD3Node = root.descendants().find(d => d.data.id === nodeId);
+            // Fallback to lastD3Root if not found or invalid
+            if (!currentD3Node || typeof currentD3Node.x !== 'number' || typeof currentD3Node.y !== 'number') {
+                currentD3Node = window.lastD3Root;
+            }
+            if (
+                currentD3Node &&
+                typeof currentD3Node.x === 'number' &&
+                typeof currentD3Node.y === 'number' &&
+                zoom
+            ) {
+                const centerX = width / 2;
+                const centerY = height / 2;
+                const targetX = currentD3Node.x;
+                const targetY = currentD3Node.y;
+                const transform = d3.zoomIdentity
+                    .translate(centerX - targetX, centerY - targetY)
+                    .scale(1);
+                svg.transition().duration(config.transitionDuration).call(zoom.transform, transform);
+            } else {
+                log('Center view: Could not find a valid node to center on.');
+            }
+        };
+        container.style.position = 'relative';
+        container.appendChild(btn);
     }
 
     // Expose public API
