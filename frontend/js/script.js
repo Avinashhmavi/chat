@@ -5,7 +5,6 @@ let isRegistered = false;
 let allOptions = []; // Store all options for filtering
 let optionsDiv = null; // Reference to the options container
 let cityOptions = []; // Store city options for filtering
-let chatMode = 'flow'; // 'flow' or 'rag' - default to flow-based chat
 
 // Function to add messages to the chat
 function addMessage(text, sender) {
@@ -175,22 +174,37 @@ function fetchChatResponse(state, input) {
         return response.json();
     })
     .then(data => {
-        if (!data || typeof data.response === 'undefined') {
-            throw new Error('Invalid backend response');
+        // --- Auto-switch to AI mode only after 'How can I assist you further?' ---
+        const fallbackPhrases = [
+            'No information found',
+            'Sorry, something went wrong',
+            'No active courses',
+            'Invalid',
+            'No results found',
+            'No B-School Selection data',
+            'Price information is not available',
+            'Please try again later.'
+        ];
+        const isFallback = fallbackPhrases.some(phrase => (data.response || '').includes(phrase)) ||
+            ((data.options && data.options.length === 0) && (data.back_options && data.back_options.length === 0));
+        // Only trigger AI fallback if state is category_selected or later
+        const aiEligibleStates = ['category_selected', 'question_selected', 'result_selected', 'testimonial_response'];
+        if (isFallback && input && aiEligibleStates.includes(state)) {
+            fetchRAGResponse(input, true);
+            return;
         }
+        // Otherwise, show the flow chat response as usual
         addMessage(data.response, 'bot');
         currentState = data.next_state;
-        // Conversation Tree (removable): update tree after response from server
-        if (window.TreeModule && input) { // only run if there was user input
+        if (window.TreeModule && input) {
             window.TreeModule.addNode({
                 label: input,
                 previousState: state,
                 nextState: data.next_state,
                 options: data.options || [],
-                path: data.path // Use the path returned from backend
+                path: data.path
             });
         }
-        // Fetch cities when entering city_selected state
         if (currentState === 'city_selected') {
             fetch('/api/all_cities')
                 .then(response => response.json())
@@ -354,25 +368,18 @@ function sendMessage() {
     if (input) {
         addMessage(input, 'user');
         
-        if (chatMode === 'rag') {
-            // Use RAG-based chat
-            fetchRAGResponse(input);
-        } else {
-            // Use flow-based chat
-            fetchChatResponse(currentState, input);
-        }
+        fetchChatResponse(currentState, input);
         
         userInput.value = '';
     }
 }
 
 // Function to fetch RAG responses from the server
-function fetchRAGResponse(message) {
+function fetchRAGResponse(message, showAIBadge) {
     const payload = {
         message: message,
         user_id: userId
     };
-    
     fetch('/rag-chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -385,57 +392,16 @@ function fetchRAGResponse(message) {
         return response.json();
     })
     .then(data => {
-        addMessage(data.response, 'bot');
+        if (showAIBadge) {
+            addMessage('<span style="font-size:10px;color:#888;background:#ffe;padding:2px 6px;border-radius:8px;margin-right:4px;">AI</span> ' + data.response, 'bot');
+        } else {
+            addMessage(data.response, 'bot');
+        }
     })
     .catch(error => {
         console.error('RAG fetch error:', error);
         addMessage('Oops, something went wrong with the AI response. Please try again.', 'bot');
     });
-}
-
-// Function to toggle between flow-based and RAG-based chat
-function toggleChatMode() {
-    console.log('Toggle chat mode clicked. Current mode:', chatMode);
-    
-    chatMode = chatMode === 'flow' ? 'rag' : 'flow';
-    console.log('Switched to mode:', chatMode);
-    
-    // Update UI to show current mode
-    const modeIndicator = document.getElementById('chatModeIndicator');
-    if (modeIndicator) {
-        modeIndicator.textContent = chatMode === 'rag' ? 'AI Chat' : 'Flow Chat';
-        modeIndicator.className = chatMode === 'rag' ? 'mode-indicator rag-mode' : 'mode-indicator flow-mode';
-        console.log('Updated mode indicator:', modeIndicator.textContent);
-    } else {
-        console.error('Mode indicator not found');
-    }
-    
-    // Clear current conversation when switching modes
-    const messagesContainer = document.getElementById('messagesContainer');
-    if (messagesContainer) {
-        messagesContainer.innerHTML = '';
-        console.log('Cleared messages container');
-    } else {
-        console.error('Messages container not found');
-    }
-    
-    if (optionsDiv) {
-        optionsDiv.remove();
-        optionsDiv = null;
-        allOptions = [];
-        console.log('Cleared options');
-    }
-    
-    // Reset state for flow mode
-    if (chatMode === 'flow') {
-        currentState = 'start';
-        console.log('Switched to flow mode, starting flow chat');
-        fetchChatResponse('start', '');
-    } else {
-        // Welcome message for RAG mode
-        console.log('Switched to RAG mode, showing welcome message');
-        addMessage("Hello! I'm TINA, your AI assistant. I can help you with questions about T.I.M.E. courses, exams, admissions, and more. Feel free to ask me anything!", 'bot');
-    }
 }
 
 // Initialize the chat when the DOM is loaded
@@ -529,20 +495,4 @@ document.addEventListener('DOMContentLoaded', function() {
             console.warn('[Chatbot] Ignoring branch jump with invalid or empty state:', detail);
         }
     });
-    const chatModeToggle = document.getElementById('chatModeToggle');
-    if (chatModeToggle) {
-        console.log('Found chat mode toggle button, adding event listener');
-        chatModeToggle.addEventListener('click', toggleChatMode);
-        console.log('Event listener added to chat mode toggle');
-    } else {
-        console.error('Chat mode toggle button not found in DOM');
-        // Try to find it by different selectors
-        const alternativeToggle = document.querySelector('.btn-mode-toggle');
-        if (alternativeToggle) {
-            console.log('Found alternative toggle button, adding event listener');
-            alternativeToggle.addEventListener('click', toggleChatMode);
-        } else {
-            console.error('No toggle button found with any selector');
-        }
-    }
 });

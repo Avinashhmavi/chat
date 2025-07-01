@@ -281,7 +281,7 @@ class MySQLDB:
 
     async def search_exam_info(self, query: str):
         """
-        Search for relevant exam information based on the query
+        Search for relevant exam information based on the query, including scholarship/test/ttse info.
         """
         search_query = """
             SELECT 
@@ -308,11 +308,28 @@ class MySQLDB:
             LIMIT 5
         """
         search_term = f"%{query}%"
+        results = []
         try:
-            return await self.query(search_query, (search_term, search_term, search_term, search_term, search_term, search_term, search_term, search_term, search_term))
+            results = await self.query(search_query, (search_term,)*9)
+            results = list(results)  # Defensive: ensure it's a list
         except Exception as e:
             logger.error(f"Error searching exam info: {e}")
-            return []
+        # --- Add scholarship/test/ttse info ---
+        scholarship_keywords = ['scholarship', 'test', 'ttse']
+        if any(kw in query.lower() for kw in scholarship_keywords):
+            ttse_query = """
+                SELECT description as test_name, 'TTSE' as test_type, ttse_rstdate as registration_closed, ttse_date as exam_date
+                FROM ttse_creation
+                WHERE description LIKE %s OR course LIKE %s
+                LIMIT 5
+            """
+            try:
+                ttse_results = await self.query(ttse_query, (search_term, search_term))
+                if ttse_results:
+                    results.extend(list(ttse_results))  # Defensive: ensure it's a list
+            except Exception as e:
+                logger.error(f"Error searching ttse_creation for scholarship/test info: {e}")
+        return results
 
     async def search_static_answers(self, query: str):
         """

@@ -13,6 +13,7 @@ import mysql.connector
 from fastapi import Depends
 import hashlib
 import os
+import re
 
 app = FastAPI()
 
@@ -806,37 +807,43 @@ async def rag_chat(data: RAGChatRequest):
     try:
         user_input = data.message.strip()
         user_id = data.user_id
-        
+
+        # --- Normalize user input ---
+        normalized_input = re.sub(r'[?.!]+$', '', user_input).strip().lower()
+
         logger.info(f"RAG chat request received: {user_input[:50]}... from user {user_id}")
-        
-        if not user_input:
+
+        if not normalized_input:
             return {
                 "response": "Please enter your question.",
                 "type": "rag"
             }
-        
+
         # Check if we're in demo mode
         if hasattr(app.state, 'demo_mode') and app.state.demo_mode:
             logger.info("Using demo RAG system")
-            # Use demo RAG system without database
             from demo_rag import DemoRAGSystem
             demo_rag = DemoRAGSystem()
-            response = demo_rag.generate_demo_response(user_input)
+            response = demo_rag.generate_demo_response(normalized_input)
             logger.info(f"Demo RAG response generated for user {user_id}: {response[:100]}...")
         else:
             logger.info("Using full RAG system with database")
-            # Get user context if available
             user_context = chatbot.get_context(user_id) if user_id else {}
-            
-            # Generate RAG response with database context
-            response = await rag_system.generate_rag_response(user_input, user_context)
+            # --- Prompt engineering ---
+            system_prompt = (
+                "If the user asks about course fees, and you have the information, always provide it. "
+                "Only ask for clarification if absolutely necessary. "
+                "Be concise and helpful."
+            )
+            # --- Improved retrieval logic: pass normalized_input and system_prompt ---
+            response = await rag_system.generate_rag_response(normalized_input, user_context, system_prompt=system_prompt)
             logger.info(f"RAG response generated for user {user_id}: {response[:100]}...")
-        
+
         return {
             "response": response,
             "type": "rag"
         }
-        
+
     except Exception as e:
         logger.error(f"Error in RAG chat endpoint: {str(e)}")
         return {

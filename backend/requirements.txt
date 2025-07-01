@@ -10,3 +10,4 @@ langchain
 langchain-openai
 faiss-cpu
 sentence-transformers
+mysql-connector-python
