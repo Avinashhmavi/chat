@@ -590,15 +590,15 @@
         lastState = nodeData.state;
         log('Rewound to node:', nodeData.label);
         updateTree();
-        let evt = new CustomEvent('tree:rewind', {
-            detail: {
-                label: nodeData.label,
-                state: nodeData.state,
-                context: nodeData.context
-            }
-        });
-        window.dispatchEvent(evt);
-        log('Dispatched tree:rewind event for state:', nodeData.state);
+        // let evt = new CustomEvent('tree:rewind', {
+        //     detail: {
+        //         label: nodeData.label,
+        //         state: nodeData.state,
+        //         context: nodeData.context
+        //     }
+        // });
+        // window.dispatchEvent(evt);
+        // log('Dispatched tree:rewind event for state:', nodeData.state);
     }
 
     // Jump to a sibling/alternative branch
@@ -803,19 +803,47 @@
             .append('g')
             .attr('class', d => `node ${d.data.isChosen ? 'node-chosen' : 'node-option'} ${d.data.id === nodeId ? 'node-current' : ''}`)
             .attr('transform', d => `translate(${d.x},${d.y})`)
-            .on('click', function(event, d) {
+            .on('click', async function(event, d) {
                 event.stopPropagation();
                 if (d.data.id === nodeId) return;
-                if (d.data.isChosen) {
-                    rewindToNode(d.data.id);
-                } else {
-                    let jumpEvt = new CustomEvent('tree:branch-jump', {
-                        detail: {
-                            label: d.data.label,
-                            state: d.data.state
-                        }
+                // Always make a backend request to fetch the next state/options for this node
+                if (!window.userId) {
+                    log('No userId available for node:', d.data.label);
+                    alert('Please complete registration to explore this branch.');
+                    return;
+                }
+                try {
+                    const payload = {
+                        state: d.data.state,
+                        input: d.data.label,
+                        user_id: window.userId
+                    };
+                    const response = await fetch('/chat', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(payload)
                     });
-                    window.dispatchEvent(jumpEvt);
+                    const data = await response.json();
+                    log('[TreeModule] /chat response for node click:', d.data.label, data);
+                    if (data && data.next_state) {
+                        // Compose a context object similar to chatbot
+                        const context = {
+                            label: data.label || d.data.label, // fallback to clicked node label
+                            previousState: d.data.state,
+                            nextState: data.next_state,
+                            options: data.options || [],
+                            path: data.path || []
+                        };
+                        TreeModule.addNode(context);
+                        // If this is a category node, also fetch Q&A
+                        if (data.next_state === 'category_selected' && categoryMap[context.label]) {
+                            fetchAndAddQA(d.data);
+                        }
+                    } else {
+                        log('No valid data returned for node click:', d.data.label, data);
+                    }
+                } catch (error) {
+                    console.error('[TreeModule] Error fetching data for node click:', error);
                 }
             });
 
