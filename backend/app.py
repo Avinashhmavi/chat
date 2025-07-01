@@ -358,6 +358,44 @@ async def chat(data: ChatRequest):
                     "back_options": ["Back to categories", "Main page"]
                 }
 
+            if question_id == 35:
+                course_id = context.get("course_id")
+                course_name = context.get("course")
+                query = """
+                    SELECT applink, telegramlink, whatsapplink 
+                    FROM courses 
+                    WHERE id = %s AND course_status = 1
+                """
+                link_result = await db1.query(query, (course_id,))
+                if link_result:
+                    links = link_result[0]
+                    applink = links['applink'] or '#'
+                    telegramlink = links['telegramlink'] or '#'
+                    whatsapplink = links['whatsapplink'] or '#'
+                    html_response = (
+                        f"<p>Yes, <a href='{applink}' target='_blank'>{course_name} APP</a> is our application.</p>"
+                        f"<p>The link to the Telegram channel is: <a href='{telegramlink}' target='_blank'>TIME {course_name} Telegram Channel</a></p>"
+                        f"<p>And our WhatsApp channel is: <a href='{whatsapplink}' target='_blank'>{course_name} WhatsApp Channel</a></p>"
+                    )
+                else:
+                    html_response = "Sorry, no app or social media links are available for this course."
+                await db1.log_query(
+                    user_id,
+                    context.get("course"),
+                    context.get("subcourse"),
+                    context.get("training_type"),
+                    context.get("category_id"),
+                    question_id,
+                    html_response
+                )
+                questions = await call_db_api("/api/questions", params={"category_id": context.get("category_id")})
+                return {
+                    "response": html_response,
+                    "options": questions.get("data", []),
+                    "next_state": "question_selected",
+                    "back_options": ["Back to categories", "Main page"]
+                }
+
             if context.get("category_id") == 8:
                 question_columns = {
                     38: "eligibility_criteria",
