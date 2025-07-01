@@ -9,6 +9,7 @@ import logging
 import random
 import mysql.connector
 from fastapi import Depends
+import hashlib
 
 app = FastAPI()
 
@@ -39,6 +40,41 @@ class ChatRequest(BaseModel):
     state: str = "start"
     input: str = ""
     user_id: int | None = None
+
+def make_node_id(label, db_id=None):
+    if db_id is not None:
+        return int(db_id)
+    # fallback: hash the label for uniqueness
+    return int(hashlib.sha256(label.encode('utf-8')).hexdigest(), 16) % (10 ** 8)
+
+def get_path_for_state(context, state, user_input=None):
+    """
+    Returns a list of node IDs from course to current node, matching the frontend tree structure.
+    """
+    path = []
+    # Course (always start path with course_id)
+    if 'course_id' in context:
+        path.append(int(context['course_id']))
+    # Subcourse (use hash if no DB id)
+    if 'subcourse' in context:
+        path.append(make_node_id(context['subcourse']))
+    # Variant (training_type)
+    if 'training_type' in context:
+        path.append(make_node_id(context['training_type']))
+    # Category
+    if 'category_id' in context:
+        path.append(int(context['category_id']))
+    # Question
+    if state == 'question_selected' and user_input:
+        question_dict = context.get('question_dict')
+        if question_dict and user_input in question_dict:
+            path.append(int(question_dict[user_input]))
+        else:
+            path.append(make_node_id(user_input))
+    # Result/testimonial
+    if state in ('result_selected', 'testimonial_response') and user_input:
+        path.append(make_node_id(user_input))
+    return path
 
 @app.post("/register")
 async def register(data: RegisterRequest):
@@ -81,7 +117,8 @@ async def chat(data: ChatRequest):
             return {
                 "response": "Please enter your city.",
                 "options": [],
-                "next_state": "city_selected"
+                "next_state": "city_selected",
+                "path": []
             }
 
         elif state == "city_selected":
@@ -97,33 +134,38 @@ async def chat(data: ChatRequest):
                     return {
                         "response": "Sorry, something went wrong. Please try again later.",
                         "options": [],
-                        "next_state": "start"
+                        "next_state": "start",
+                        "path": []
                     }
                 chatbot.set_context(user_id, {"city": nearest_center})
                 if not city_data.get("data", {}).get("courses"):
                     return {
                         "response": f"No active courses available for {nearest_center}. Please try again later.",
                         "options": [],
-                        "next_state": "start"
+                        "next_state": "start",
+                        "path": []
                     }
                 return {
                     "response": f"Sorry, we couldn't find your city. We've mapped you to our Hyderabad center. Which course are you looking for?",
                     "options": [course["name"] for course in city_data.get("data", {}).get("courses", [])],
                     "next_state": "course_selected",
-                    "back_options": ["Back to cities"]
+                    "back_options": ["Back to cities"],
+                    "path": get_path_for_state({}, state, user_input)
                 }
             chatbot.set_context(user_id, {"city": nearest_center})
             if not city_data.get("data", {}).get("courses"):
                 return {
                     "response": f"No active courses available for {nearest_center}. Please enter another city.",
                     "options": [],
-                    "next_state": "city_selected"
+                    "next_state": "city_selected",
+                    "path": get_path_for_state({}, state, user_input)
                 }
             return {
                 "response": f"You selected: {nearest_center}. Which course are you looking for?",
                 "options": [course["name"] for course in city_data.get("data", {}).get("courses", [])],
                 "next_state": "course_selected",
-                "back_options": ["Back to cities"]
+                "back_options": ["Back to cities"],
+                "path": get_path_for_state({}, state, user_input)
             }
 
         elif state == "course_selected":
@@ -131,7 +173,8 @@ async def chat(data: ChatRequest):
                 return {
                     "response": "Please enter your city.",
                     "options": [],
-                    "next_state": "city_selected"
+                    "next_state": "city_selected",
+                    "path": []
                 }
             selected_course = user_input
             context = chatbot.get_context(user_id)
@@ -143,7 +186,8 @@ async def chat(data: ChatRequest):
                     "response": "Invalid course. Please select a valid course.",
                     "options": [course["name"] for course in city_data.get("data", {}).get("courses", [])],
                     "next_state": "course_selected",
-                    "back_options": ["Back to cities"]
+                    "back_options": ["Back to cities"],
+                    "path": get_path_for_state(context, state, user_input)
                 }
             chatbot.set_context(user_id, {"course": selected_course, "course_id": course_id})
             subcourse_options = await call_db_api("/api/subcourses", params={"course": selected_course})
@@ -153,13 +197,15 @@ async def chat(data: ChatRequest):
                     "response": f"No exam years available for {selected_course}. Please select another course.",
                     "options": [course["name"] for course in city_data.get("data", {}).get("courses", [])],
                     "next_state": "course_selected",
-                    "back_options": ["Back to cities"]
+                    "back_options": ["Back to cities"],
+                    "path": get_path_for_state(context, state, user_input)
                 }
             return {
                 "response": f"Which {selected_course} exam year are you looking for?",
                 "options": subcourse_options.get("data", []),
                 "next_state": "subcourse_selected",
-                "back_options": ["Back to courses", "Main page"]
+                "back_options": ["Back to courses", "Main page"],
+                "path": get_path_for_state(context, state, user_input)
             }
 
         elif state == "subcourse_selected":
@@ -170,7 +216,8 @@ async def chat(data: ChatRequest):
                     "response": f"Which course are you looking for in {context.get('city', '')}?",
                     "options": [course["name"] for course in city_data.get("data", {}).get("courses", [])],
                     "next_state": "course_selected",
-                    "back_options": ["Back to cities"]
+                    "back_options": ["Back to cities"],
+                    "path": get_path_for_state(context, state, user_input)
                 }
             selected_subcourse = user_input
             context = chatbot.get_context(user_id)
@@ -181,7 +228,8 @@ async def chat(data: ChatRequest):
                     "response": f"Invalid exam year. Please select a valid {context.get('city', '')} exam year.",
                     "options": subcourse_options.get("data", []),
                     "next_state": "subcourse_selected",
-                    "back_options": ["Back to courses", "Main page"]
+                    "back_options": ["Back to courses", "Main page"],
+                    "path": get_path_for_state(context, state, user_input)
                 }
             chatbot.set_context(user_id, {"subcourse": selected_subcourse})
             variant_options = await call_db_api("/api/course_variants", params={"course_id": course_id, "subcourse": selected_subcourse})
@@ -191,13 +239,15 @@ async def chat(data: ChatRequest):
                     "response": f"No variants available for {selected_subcourse}. Please select another exam year.",
                     "options": subcourse_options.get("data", []),
                     "next_state": "subcourse_selected",
-                    "back_options": ["Back to courses", "Main page"]
+                    "back_options": ["Back to courses", "Main page"],
+                    "path": get_path_for_state(context, state, user_input)
                 }
             return {
                 "response": "What course variant would you like?",
                 "options": variant_options.get("data", []),
                 "next_state": "training_type_selected",
-                "back_options": ["Back to exam years", "Main page"]
+                "back_options": ["Back to exam years", "Main page"],
+                "path": get_path_for_state(context, state, user_input)
             }
 
         elif state == "training_type_selected":
@@ -208,7 +258,8 @@ async def chat(data: ChatRequest):
                     "response": f"Which {context.get('course', '')} exam year are you looking for?",
                     "options": subcourse_options.get("data", []),
                     "next_state": "subcourse_selected",
-                    "back_options": ["Back to courses", "Main page"]
+                    "back_options": ["Back to courses", "Main page"],
+                    "path": get_path_for_state(context, state, user_input)
                 }
             if user_input == "Main page":
                 context = chatbot.get_context(user_id)
@@ -217,7 +268,8 @@ async def chat(data: ChatRequest):
                     "response": f"Which course are you looking for in {context.get('city', '')}?",
                     "options": [course["name"] for course in city_data.get("data", {}).get("courses", [])],
                     "next_state": "course_selected",
-                    "back_options": ["Back to cities"]
+                    "back_options": ["Back to cities"],
+                    "path": get_path_for_state(context, state, user_input)
                 }
             selected_variant = user_input
             context = chatbot.get_context(user_id)
@@ -227,7 +279,8 @@ async def chat(data: ChatRequest):
                     "response": f"Invalid variant. Please select a valid variant for {context.get('subcourse', '')}.",
                     "options": variant_options.get("data", []),
                     "next_state": "training_type_selected",
-                    "back_options": ["Back to exam years", "Main page"]
+                    "back_options": ["Back to exam years", "Main page"],
+                    "path": get_path_for_state(context, state, user_input)
                 }
             chatbot.set_context(user_id, {"training_type": selected_variant})
             category_options = await call_db_api("/api/categories")
@@ -236,13 +289,15 @@ async def chat(data: ChatRequest):
                 return {
                     "response": "No categories available. Let's start over.",
                     "options": [],
-                    "next_state": "start"
+                    "next_state": "start",
+                    "path": get_path_for_state({}, state, user_input)
                 }
             return {
                 "response": "How can I assist you further?",
                 "options": category_options.get("data", []),
                 "next_state": "category_selected",
-                "back_options": ["Back to variants", "Main page"]
+                "back_options": ["Back to variants", "Main page"],
+                "path": get_path_for_state(context, state, user_input)
             }
 
         elif state == "category_selected":
@@ -253,7 +308,8 @@ async def chat(data: ChatRequest):
                     "response": "What course variant would you like?",
                     "options": variant_options.get("data", []),
                     "next_state": "training_type_selected",
-                    "back_options": ["Back to exam years", "Main page"]
+                    "back_options": ["Back to exam years", "Main page"],
+                    "path": get_path_for_state(context, "category_selected", user_input)
                 }
             if user_input == "Main page":
                 context = chatbot.get_context(user_id)
@@ -262,15 +318,18 @@ async def chat(data: ChatRequest):
                     "response": f"Which course are you looking for in {context.get('city', '')}?",
                     "options": [course["name"] for course in city_data.get("data", {}).get("courses", [])],
                     "next_state": "course_selected",
-                    "back_options": ["Back to cities"]
+                    "back_options": ["Back to cities"],
+                    "path": get_path_for_state(context, "category_selected", user_input)
                 }
             if not user_input:
                 category_options = await call_db_api("/api/categories")
+                context = chatbot.get_context(user_id)
                 return {
                     "response": "How can I assist you further?",
                     "options": category_options.get("data", []),
                     "next_state": "category_selected",
-                    "back_options": ["Back to variants", "Main page"]
+                    "back_options": ["Back to variants", "Main page"],
+                    "path": get_path_for_state(context, "category_selected", user_input)
                 }
             selected_category = user_input
             category_dict = await call_db_api("/api/categories_dict")
@@ -278,25 +337,30 @@ async def chat(data: ChatRequest):
                 return {
                     "response": "Goodbye! If you need help, feel free to reach out again.",
                     "options": [],
-                    "next_state": "start"
+                    "next_state": "start",
+                    "path": []
                 }
             category_id = category_dict.get("data", {}).get(selected_category)
             if not category_id:
                 logger.error(f"Invalid category selected: {selected_category}")
                 category_options = await call_db_api("/api/categories")
+                context = chatbot.get_context(user_id)
                 return {
                     "response": "Invalid category. How can I assist you further?",
                     "options": category_options.get("data", []),
                     "next_state": "category_selected",
-                    "back_options": ["Back to variants", "Main page"]
+                    "back_options": ["Back to variants", "Main page"],
+                    "path": get_path_for_state(context, "category_selected", user_input)
                 }
-            questions = await call_db_api("/api/questions", params={"category_id": category_id})
             chatbot.set_context(user_id, {"category_id": category_id})
+            context = chatbot.get_context(user_id)
+            questions = await call_db_api("/api/questions", params={"category_id": category_id})
             return {
                 "response": "Please select a question.",
                 "options": questions.get("data", []),
                 "next_state": "question_selected",
-                "back_options": ["Back to categories", "Main page"]
+                "back_options": ["Back to categories", "Main page"],
+                "path": get_path_for_state(context, "category_selected", user_input)
             }
 
         elif state == "question_selected":
@@ -304,19 +368,23 @@ async def chat(data: ChatRequest):
             context = chatbot.get_context(user_id)
             if selected_question == "Back to categories":
                 category_options = await call_db_api("/api/categories")
+                context = chatbot.get_context(user_id)
                 return {
                     "response": "How can I assist you further?",
                     "options": category_options.get("data", []),
                     "next_state": "category_selected",
-                    "back_options": ["Back to variants", "Main page"]
+                    "back_options": ["Back to variants", "Main page"],
+                    "path": get_path_for_state(context, "question_selected", user_input)
                 }
             elif selected_question.upper() == "BACK":
                 category_options = await call_db_api("/api/categories")
+                context = chatbot.get_context(user_id)
                 return {
                     "response": "How can I assist you further?",
                     "options": category_options.get("data", []),
                     "next_state": "category_selected",
-                    "back_options": ["Back to variants", "Main page"]
+                    "back_options": ["Back to variants", "Main page"],
+                    "path": get_path_for_state(context, "question_selected", user_input)
                 }
             elif selected_question == "Main page":
                 context = chatbot.get_context(user_id)
@@ -325,9 +393,12 @@ async def chat(data: ChatRequest):
                     "response": f"Which course are you looking for in {context.get('city', '')}?",
                     "options": [course["name"] for course in city_data.get("data", {}).get("courses", [])],
                     "next_state": "course_selected",
-                    "back_options": ["Back to cities"]
+                    "back_options": ["Back to cities"],
+                    "path": get_path_for_state(context, "question_selected", user_input)
                 }
             question_dict = await call_db_api("/api/questions_dict", params={"category_id": context.get("category_id")})
+            chatbot.set_context(user_id, {"question_dict": question_dict.get("data", {})})
+            context = chatbot.get_context(user_id)
             question_id = question_dict.get("data", {}).get(selected_question)
             if not question_id:
                 questions = await call_db_api("/api/questions", params={"category_id": context.get("category_id")})
@@ -335,7 +406,8 @@ async def chat(data: ChatRequest):
                     "response": "Invalid question. Please select a valid question.",
                     "options": questions.get("data", []),
                     "next_state": "question_selected",
-                    "back_options": ["Back to categories", "Main page"]
+                    "back_options": ["Back to categories", "Main page"],
+                    "path": get_path_for_state(context, "question_selected", user_input)
                 }
 
             if question_id == 30:

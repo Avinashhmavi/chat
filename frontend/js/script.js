@@ -91,7 +91,8 @@ function renderOptions(options, backOptions, nextState) {
                     previousState: nextState,
                     nextState: nextState,
                     options: [],
-                    previousLabel: ''
+                    previousLabel: '',
+                    path: data.path // Use the path returned from backend
                 });
             }
             if (optionsDiv) {
@@ -173,6 +174,9 @@ function fetchChatResponse(state, input) {
         return response.json();
     })
     .then(data => {
+        if (!data || typeof data.response === 'undefined') {
+            throw new Error('Invalid backend response');
+        }
         addMessage(data.response, 'bot');
         currentState = data.next_state;
         // Conversation Tree (removable): update tree after response from server
@@ -181,7 +185,8 @@ function fetchChatResponse(state, input) {
                 label: input,
                 previousState: state,
                 nextState: data.next_state,
-                options: data.options || []
+                options: data.options || [],
+                path: data.path // Use the path returned from backend
             });
         }
         // Fetch cities when entering city_selected state
@@ -434,19 +439,13 @@ document.addEventListener('DOMContentLoaded', function() {
     });
 
     // Listen for the tree telling the chatbot to jump to a new branch
-    window.addEventListener('tree:branch-jump', (e) => {
-        console.log('[Chatbot] Received tree:branch-jump event. Details:', e.detail);
-        const { label, state } = e.detail;
-
-        // This is equivalent to the user clicking an option button.
-        // We can simply call fetchChatResponse as if a button was clicked.
-        addMessage(label, 'user');
-        fetchChatResponse(state, label);
-
-        // Remove any existing option buttons from the chat
-        if (optionsDiv) {
-            optionsDiv.remove();
-            optionsDiv = null;
+    window.addEventListener('tree:branch-jump', function(e) {
+        const detail = e.detail;
+        // Only call fetchChatResponse if state is valid and non-empty
+        if (detail && detail.state && detail.state !== '') {
+            fetchChatResponse(detail.state, detail.label);
+        } else {
+            console.warn('[Chatbot] Ignoring branch jump with invalid or empty state:', detail);
         }
     });
 });

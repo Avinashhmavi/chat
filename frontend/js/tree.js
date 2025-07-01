@@ -27,8 +27,8 @@
     let boxPadding = { x: 12, y: 8 };
     let boxMinWidth = 60;
     let boxHeight = 32;
-    let horizontalSpacing = 120;
-    let verticalSpacing = 70;
+    let horizontalSpacing = 220;
+    let verticalSpacing = 120;
     let categoryMap = {};
     let hiddenDiv = null; // For measuring HTML content
 
@@ -346,14 +346,24 @@
     };
 
     // Utility: Find or create a child node by label
-    function findOrCreateChild(parent, label, state, options) {
+    function findOrCreateChild(parent, label, state, options, id = null) {
         if (!parent.children) parent.children = [];
-        let existing = parent.children.find(child => child.label === label);
-        if (existing) return existing;
+        let existing = null;
+        if (id !== null) {
+            existing = parent.children.find(child => child.id === id);
+        }
+        if (!existing) {
+            existing = parent.children.find(child => child.label === label);
+        }
+        if (existing) {
+            // Always update state if provided
+            if (state && existing.state !== state) existing.state = state;
+            return existing;
+        }
         let newNode = {
-            id: ++nodeId,
+            id: id !== null ? id : ++nodeId,
             label: label,
-            state: state,
+            state: state || '',
             options: options || [],
             isChosen: false,
             children: []
@@ -362,19 +372,86 @@
         return newNode;
     }
 
+    // Utility: Find node by a path of IDs
+    function findNodeByPath(root, path) {
+        let node = root;
+        for (let i = 1; i < path.length; i++) { // skip root
+            if (!node.children) return null;
+            node = node.children.find(child => child.id === path[i]);
+            if (!node) return null;
+        }
+        return node;
+    }
+
+    // Utility: Ensure the full path exists in the tree, creating missing nodes as needed
+    function ensurePathExists(root, path, labels, states, optionsArr, context) {
+        let node = root;
+        for (let i = 1; i < path.length; i++) {
+            if (!node.children) node.children = [];
+            // Try to get label from parent's options if available
+            let label = labels[i];
+            if (!label && node.options && Array.isArray(node.options)) {
+                if (typeof node.options[0] === 'string') {
+                    label = node.options.find(opt => makeNodeId(opt) === path[i]) || '';
+                }
+                if (typeof node.options[0] === 'object') {
+                    let found = node.options.find(opt => makeNodeId(opt.label) === path[i] || opt.id === path[i]);
+                    if (found) label = found.label;
+                }
+            }
+            if (!label && i === path.length - 1 && context && context.label) {
+                label = context.label;
+            }
+            let state = states[i] || (context && context.nextState) || '';
+            let child = node.children.find(child => child.id === path[i]);
+            if (!child) {
+                child = {
+                    id: path[i],
+                    label: label || `Node ${path[i]}`,
+                    state: state,
+                    options: optionsArr[i] || [],
+                    isChosen: false,
+                    children: []
+                };
+                node.children.push(child);
+            } else {
+                // Always update state if provided
+                if (state && child.state !== state) child.state = state;
+                if (label && child.label !== label) child.label = label;
+            }
+            // Mark all children as not chosen, except the one on the path
+            node.children.forEach(c => c.isChosen = (c.id === path[i]));
+            // DO NOT prune children here!
+            node = child;
+        }
+        return node;
+    }
+
+    // Helper to match backend's make_node_id logic for string labels
+    function makeNodeId(label) {
+        // Use a simple hash for demo; backend uses sha256 and mod 10^8
+        let hash = 0;
+        for (let i = 0; i < label.length; i++) {
+            hash = ((hash << 5) - hash) + label.charCodeAt(i);
+            hash |= 0;
+        }
+        return Math.abs(hash) % 100000000;
+    }
+
     // Add a node to the tree
     TreeModule.addNode = function(context) {
         log('addNode called with context:', context);
-        const { label, previousState, nextState, options, previousLabel } = context;
+        const { label, previousState, nextState, options, path } = context;
 
         if (!isInitialized) return;
         if (!label) return;
 
+        // Only start tree at course_selected
         if (!treeData) {
             if (previousState === 'course_selected') {
                 log('Tree starting with root node:', label);
                 treeData = {
-                    id: ++nodeId,
+                    id: path && path.length > 0 ? path[0] : ++nodeId,
                     label: label,
                     state: nextState,
                     options: options,
@@ -387,35 +464,55 @@
                 return;
             }
         } else {
-            let parentNode = null;
-            if (context.previousLabel) {
-                parentNode = findNodeByLabel(treeData, context.previousLabel);
-            }
-            if (!parentNode) {
-                parentNode = findNodeById(treeData, nodeId);
-            }
-            if (!parentNode) {
-                log('Error: Could not find the parent node in the tree. Resetting.', 'Current Node ID:', nodeId);
-                treeData = null;
+            if (!path || path.length < 1) {
+                log('Error: No path provided in context.');
                 return;
             }
-
-            let selectedChild = findOrCreateChild(parentNode, label, nextState, options);
-            pruneSiblingsAndChildren(selectedChild, parentNode);
-            parentNode.children.forEach(child => child.isChosen = (child === selectedChild));
-            nodeId = selectedChild.id;
-
-            if (selectedChild.options) {
-                selectedChild.options.forEach(opt => {
-                    findOrCreateChild(selectedChild, opt, nextState, []);
-                });
+            // Build up the path of labels, states, and options for each node in the path
+            let labels = [];
+            let states = [];
+            let optionsArr = [];
+            let current = treeData;
+            labels.push(current.label);
+            states.push(current.state);
+            optionsArr.push(current.options);
+            for (let i = 1; i < path.length; i++) {
+                let found = current.children && current.children.find(child => child.id === path[i]);
+                if (found) {
+                    labels.push(found.label);
+                    states.push(found.state);
+                    optionsArr.push(found.options);
+                    current = found;
+                } else {
+                    labels.push('');
+                    states.push('');
+                    optionsArr.push([]);
+                }
             }
-
-            if (categoryMap[selectedChild.label]) {
-                fetchAndAddQA(selectedChild);
+            // Ensure the full path exists
+            let selectedNode = ensurePathExists(treeData, path, labels, states, optionsArr, context);
+            // Mark the active path as chosen
+            let node = treeData;
+            for (let i = 1; i < path.length; i++) {
+                node.children.forEach(c => c.isChosen = (c.id === path[i]));
+                node = node.children.find(c => c.id === path[i]);
+            }
+            // At the selected node, clear its children and add new children for options
+            if (selectedNode) {
+                selectedNode.children = [];
+                if (options && Array.isArray(options)) {
+                    options.forEach(opt => {
+                        findOrCreateChild(selectedNode, opt, nextState, [], null);
+                    });
+                }
+                selectedNode.isChosen = true;
+                nodeId = selectedNode.id;
+                // Fetch Q&A if needed
+                if (categoryMap[selectedNode.label]) {
+                    fetchAndAddQA(selectedNode);
+                }
             }
         }
-
         lastState = nextState;
         updateTree();
     };
@@ -426,7 +523,9 @@
         if (!path) return;
         let nodeData = path[path.length - 1];
         let parent = path.length > 1 ? path[path.length - 2] : null;
-        pruneSiblingsAndChildren(nodeData, parent);
+        if (parent && parent.children) {
+            parent.children = [nodeData];
+        }
         nodeId = nodeData.id;
         lastState = nodeData.state;
         log('Rewound to node:', nodeData.label);
@@ -443,15 +542,20 @@
     }
 
     // Jump to a sibling/alternative branch
-    function jumpToSibling(id, siblingLabel) {
-        let path = findPathToNode(treeData, id, []);
-        if (!path) return;
-        let parent = path[path.length - 2];
+    function jumpToSibling(id, siblingLabel, siblingPath) {
+        // siblingPath: path of IDs to the parent, plus the sibling's ID as last element
+        if (!siblingPath || siblingPath.length < 2) return;
+        let parent = findNodeByPath(treeData, siblingPath.slice(0, -1));
         if (!parent) return;
-        pruneAfterNode(parent);
-        nodeId = parent.id;
-        lastState = parent.state;
-        TreeModule.addNode({ label: siblingLabel, previousState: parent.state, nextState: parent.state, options: [] });
+        // Prune all children except the sibling
+        let siblingNode = parent.children.find(child => child.label === siblingLabel);
+        if (!siblingNode) {
+            siblingNode = findOrCreateChild(parent, siblingLabel, parent.state, []);
+        }
+        parent.children = [siblingNode];
+        nodeId = siblingNode.id;
+        lastState = siblingNode.state;
+        TreeModule.addNode({ label: siblingLabel, previousState: parent.state, nextState: parent.state, options: [], path: siblingPath });
         log('Jumped to sibling branch:', siblingLabel);
     }
 
@@ -518,7 +622,7 @@
         });
 
         // Use ultra-tight D3 layout horizontally, but fixed vertical spacing for initial layout
-        let treeLayout = d3.tree().nodeSize([1, 1]);
+        let treeLayout = d3.tree().nodeSize([horizontalSpacing, verticalSpacing]);
         treeLayout(root);
 
         // True overlap detection and minimal adjustment (horizontal only)
@@ -648,7 +752,7 @@
                     let jumpEvt = new CustomEvent('tree:branch-jump', {
                         detail: {
                             label: d.data.label,
-                            state: d.parent.data.state,
+                            state: d.data.state
                         }
                     });
                     window.dispatchEvent(jumpEvt);
