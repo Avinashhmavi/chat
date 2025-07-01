@@ -190,10 +190,12 @@
 }
 
 .user-message {
-    background-color: var(--primary-color);
-    color: white;
+    background-color: #fff8cf;
+    color: #3b348d;
     margin-left: auto;
     border-bottom-right-radius: 0px;
+    border: 1px solid #e7d59e;
+    font-weight: 500
 }
 
 .bot-message {
